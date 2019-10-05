@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Mooltipass</string>
+    <string name="settings_autofill_service_set">Mooltifill service set to default.</string>
+    <string name="settings_autofill_service_not_set">Mooltifill service not set to default.</string>
+    <string name="settings_authentication_header">Mooltipass Settings</string>
+    <string name="settings_test_connection">Test Connection</string>
+</resources>
