@@ -10,4 +10,6 @@ interface IMooltipassDevice {
     fun setLogin(login: String): Boolean
     fun setPassword(password: String): Boolean
     fun addContext(context: String): Boolean
+
+    fun getMessageFactory(): MessageFactory
 }

@@ -5,6 +5,10 @@ import android.hardware.usb.*
 import android.util.Log
 
 class MooltipassUsb(ctx: Context, val device: UsbDevice): MooltipassCommunication(ctx) {
+    override fun getPktSize(): Int {
+        return getOutput()?.maxPacketSize ?: -1
+    }
+
     private var c: UsbDeviceConnection? = null
     private val DEFAULT_TIMEOUT = 6000
 
@@ -17,16 +21,15 @@ class MooltipassUsb(ctx: Context, val device: UsbDevice): MooltipassCommunicatio
         }
     }
 
-    override fun transmit(pkt: MooltipassPacket) {
+    override fun transmit(pkt: ByteArray) {
         getOutput()?.also { endpoint ->
-            val sendData = pkt.toByteArray()
-            val rcvBytes = c?.bulkTransfer(endpoint, sendData, sendData.size, DEFAULT_TIMEOUT) //do in another thread
+            val rcvBytes = c?.bulkTransfer(endpoint, pkt, pkt.size, DEFAULT_TIMEOUT) //do in another thread
 
-            Log.d("Mooltipass", "Sent " + rcvBytes + " bytes :" + sendData.toHexString())
+            Log.d("Mooltipass", "Sent " + rcvBytes + " bytes :" + pkt.toHexString())
         }
     }
 
-    override fun receive(): MooltipassPacket? {
+    override fun receive(): ByteArray? {
         getInput()?.also { endpoint ->
             for(i in 1..3) {
                 val rcvData = ByteArray(endpoint.maxPacketSize)
@@ -36,7 +39,7 @@ class MooltipassUsb(ctx: Context, val device: UsbDevice): MooltipassCommunicatio
                     continue
                 }
                 Log.d("Mooltipass", "Received " + rcvBytes + " bytes :" + rcvData.toHexString())
-                return MooltipassPacket.fromData(rcvData)
+                return rcvData
             }
             Log.d("Mooltipass", "Giving up receiving")
         }

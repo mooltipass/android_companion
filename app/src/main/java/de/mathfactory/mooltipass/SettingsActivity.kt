@@ -1,11 +1,18 @@
 package de.mathfactory.mooltipass
 
+import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.support.design.widget.Snackbar
+import android.support.v4.app.ActivityCompat
+import android.support.v4.content.ContextCompat
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.autofill.AutofillManager
@@ -26,18 +33,68 @@ class SettingsActivity : Activity() {
         Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
     }
 
+    val deviceLocator = DeviceLocator(this)
+
+    private fun permissionSetup() {
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                val builder = AlertDialog.Builder(this)
+                builder.setTitle("This app needs location access")
+                builder.setMessage("Please grant location access so this app can detect beacons in the background.")
+                builder.setPositiveButton(android.R.string.ok, null)
+                builder.setOnDismissListener(DialogInterface.OnDismissListener {
+                    requestPermissions(
+                        arrayOf<String>(Manifest.permission.ACCESS_COARSE_LOCATION),
+                        1
+                    )
+                })
+                builder.show()
+            } else {
+                // No explanation needed, we can request the permission.
+                requestPermissions(
+                    arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+                    1)
+
+                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                // app-defined int constant. The callback method gets the
+                // result of the request.
+            }
+
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        Log.d(TAG, "permission: " + permissions[0] + " result: " + grantResults[0])
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.settings_activity)
-
+        permissionSetup()
+        deviceLocator.startBleScan(this)
         setupSettingsButton(R.id.settings_container_1, R.id.settings_test_connection, View.OnClickListener {
-            toast(
-                if(DeviceLocator().findMooltipassDevice(this) != null)
-                    "Device found" else "Device not found")
+            val dev = deviceLocator.findMooltipassDevice(this)
+            if(dev == null) {
+                toast("Device not found")
+            } else {
+                if(!dev.sendPing()) {
+                    toast("Ping failed")
+                } else {
+                    val version = dev.getVersion()
+                    toast("Device found: " + version)
+                }
+            }
         })
 
         mAutofillManager = getSystemService(AutofillManager::class.java)
         startEnableService()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        deviceLocator.stopBleScan(this)
     }
 
     private fun startEnableService() {

@@ -97,7 +97,7 @@ class MooltifillService : AutofillService() {
         if(lock.tryLock(2000, TimeUnit.MILLISECONDS)) {
             try {
 
-                val deviceLocator = DeviceLocator()
+                val deviceLocator = DeviceLocator(this)
                 val device = deviceLocator.findMooltipassDevice(this)
                 if (device == null) {
                     return listOf(null, null, "Mooltipass device not accessible")
