@@ -1,7 +1,11 @@
 <resources>
-    <string name="app_name">Mooltipass</string>
-    <string name="settings_autofill_service_set">Mooltifill service set to default.</string>
-    <string name="settings_autofill_service_not_set">Mooltifill service not set to default.</string>
-    <string name="settings_authentication_header">Mooltipass Settings</string>
-    <string name="settings_test_connection">Test Connection</string>
+    <string name="app_name">Mooltifill</string>
+    <!-- Settings Activity Title -->
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- Preference Titles -->
+    <string name="settings_header">Settings</string>
+
+    <string name="paranoia_title">Paranoia level</string>
+
 </resources>
