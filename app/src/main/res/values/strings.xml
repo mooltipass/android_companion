@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Mooltifill</string>
+    <!-- Settings Activity Title -->
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- Preference Titles -->
+    <string name="settings_header">Settings</string>
+
+    <string name="paranoia_title">Paranoia level</string>
+
+</resources>
