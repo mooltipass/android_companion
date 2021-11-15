@@ -276,6 +276,19 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
     suspend fun disconnect() {
         mpGatt.await().gatt.disconnect()
     }
+
+    @FlowPreview
+    companion object {
+        suspend fun connect(context: Context): MooltipassDevice? {
+            val device = MooltipassScan().deviceFlow(context)
+                .firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
+                ?: return null
+
+            val dev = MooltipassDevice(context, device)
+            dev.connect(CoroutineScope(Dispatchers.IO))
+            return dev
+        }
+    }
 }
 
 @FlowPreview
@@ -290,45 +303,46 @@ class MooltipassScan {
     fun deviceFlow(context: Context): Flow<BluetoothDevice> {
         return pairedDevice(context)
             ?.let(::flowOf) // use paired device, if available...
-            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
+            ?: emptyFlow() // do not scan, as paired device is necessary
+//            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
     }
 
-    private fun scanFlow(context: Context): Flow<ScanResult> {
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bluetoothLeScanner
-            ?.let(::scanFlow)
-            ?:emptyFlow() // Bluetooth not enabled?
-    }
-
-    private fun scanFlow(scanner: BluetoothLeScanner): Flow<ScanResult> = callbackFlow {
-        val cb = object : ScanCallback() {
-
-            private fun handleScanResult(result: ScanResult) {
-                if(filter(result.device ?: return)) {
-                    trySend(result)
-                }
-            }
-
-            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-                handleScanResult(result ?: return)
-            }
-
-            override fun onBatchScanResults(results: MutableList<ScanResult>?) {
-                results?.forEach(::handleScanResult)
-            }
-
-            override fun onScanFailed(errorCode: Int) = cancel("Scan failed: $errorCode")
-
-        }
-
-        scanner.startScan(listOf(ScanFilter.Builder().setDeviceName(DEVICE_NAME).build()), ScanSettings.Builder().build(), cb)
-        launch {
-            delay(SCAN_TIMEOUT)
-            channel.close()
-        }
-
-        awaitClose {
-            scanner.stopScan(cb)
-        }
-    }
+//    private fun scanFlow(context: Context): Flow<ScanResult> {
+//        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+//        return bluetoothManager.adapter.bluetoothLeScanner
+//            ?.let(::scanFlow)
+//            ?:emptyFlow() // Bluetooth not enabled?
+//    }
+//
+//    private fun scanFlow(scanner: BluetoothLeScanner): Flow<ScanResult> = callbackFlow {
+//        val cb = object : ScanCallback() {
+//
+//            private fun handleScanResult(result: ScanResult) {
+//                if(filter(result.device ?: return)) {
+//                    trySend(result)
+//                }
+//            }
+//
+//            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+//                handleScanResult(result ?: return)
+//            }
+//
+//            override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+//                results?.forEach(::handleScanResult)
+//            }
+//
+//            override fun onScanFailed(errorCode: Int) = cancel("Scan failed: $errorCode")
+//
+//        }
+//
+//        scanner.startScan(listOf(ScanFilter.Builder().setDeviceName(DEVICE_NAME).build()), ScanSettings.Builder().build(), cb)
+//        launch {
+//            delay(SCAN_TIMEOUT)
+//            channel.close()
+//        }
+//
+//        awaitClose {
+//            scanner.stopScan(cb)
+//        }
+//    }
 }

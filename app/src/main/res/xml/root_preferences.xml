@@ -3,7 +3,13 @@
 
     <PreferenceCategory
         app:title="@string/settings_header">
-
+        <Preference
+            app:key="enable_mooltifill"
+            app:title="Enable Mooltipass Autofill Service" />
+        <Preference
+            app:key="test_ping"
+            app:title="Test Mooltipass Device Connection"
+            app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
         <ListPreference
             app:key="security"
             app:title="@string/paranoia_title"
@@ -11,14 +17,13 @@
             app:entryValues="@array/paranoia_values"
             app:defaultValue="high"
             app:enabled="false"
-            app:useSimpleSummaryProvider="true"/>
+            app:useSimpleSummaryProvider="true" />
         <SwitchPreference
             app:key="debug"
-            app:title="Debug"
+            app:title="Debug Output to logcat"
             app:defaultValue="false"
-            app:summaryOn="WARNING: May leak sensitive information!"
-            app:summaryOff="Debug mode disabled"
-            />
+            app:summaryOn="WARNING: This may leak sensitive information!"
+            app:summaryOff="Debug mode disabled" />
 
     </PreferenceCategory>
 </PreferenceScreen>
