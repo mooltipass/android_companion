@@ -20,7 +20,6 @@
 package de.mathfactory.mooltifill
 
 import android.bluetooth.*
-import android.bluetooth.le.*
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*

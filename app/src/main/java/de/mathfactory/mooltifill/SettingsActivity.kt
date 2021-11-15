@@ -35,7 +35,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.*
 
 class SettingsActivity : AppCompatActivity() {

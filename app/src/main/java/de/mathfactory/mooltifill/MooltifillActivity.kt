@@ -19,7 +19,6 @@
 
 package de.mathfactory.mooltifill
 
-import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -30,7 +29,6 @@ import android.view.autofill.AutofillValue
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.firstOrNull
 import kotlin.random.Random
 
 class MooltifillActivity : AppCompatActivity() {
