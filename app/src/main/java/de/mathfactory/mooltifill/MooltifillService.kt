@@ -22,8 +22,10 @@ package de.mathfactory.mooltifill
 import android.app.PendingIntent
 import android.app.assist.AssistStructure
 import android.content.*
+import android.os.Build
 import android.os.CancellationSignal
 import android.service.autofill.*
+import android.text.InputType
 import android.util.Log
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
@@ -79,7 +81,12 @@ class MooltifillService : AutofillService() {
             val intent = Intent(applicationContext, MooltifillActivity::class.java)
             intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query.takeLast(31))
             intent.putExtra(MooltifillActivity.EXTRA_ID, id)
-            val pi = PendingIntent.getActivity(applicationContext, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+            val flags = if (Build.VERSION.SDK_INT >= 31) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pi = PendingIntent.getActivity(applicationContext, 0, intent, flags)
             dataset.setAuthentication(pi.intentSender)
             dataset.setValue(id, null, presentation)
             response.addDataset(dataset.build())
@@ -148,23 +155,39 @@ class MooltifillService : AutofillService() {
         fields: ArrayMap<String, Pair<AutofillId, AutofillValue?>>,
         node: AssistStructure.ViewNode, webDomainBuilder: StringBuilder
     ) {
-        val hints = node.autofillHints
-        if (hints != null && hints.isNotEmpty()) {
-            // TODO evaluate all hints
-            val hint = hints[0].lowercase(Locale.getDefault())
-
-            val id = node.autofillId
-            val value = node.autofillValue
+        fun addAutofillableField(hint: String, id: AutofillId?, value: AutofillValue?) {
             if (!fields.containsKey(hint)) {
-                if(SettingsActivity.isDebugEnabled(applicationContext)) {
+                if (SettingsActivity.isDebugEnabled(applicationContext)) {
                     Log.v(TAG, "Setting hint '$hint' on $id")
                 }
                 fields[hint] = Pair(id!!, value)
             } else {
-                if(SettingsActivity.isDebugEnabled(applicationContext)) {
+                if (SettingsActivity.isDebugEnabled(applicationContext)) {
                     Log.v(TAG, "Ignoring hint '$hint' on $id because it was already set")
                 }
             }
+        }
+
+        fun containsPasswordHint(v: String?): Boolean {
+            return v?.lowercase()?.let { it.contains("password") || it.contains("passwort") } == true
+        }
+
+        val hints = node.autofillHints
+        if (hints != null && hints.isNotEmpty()) {
+            // TODO evaluate all hints
+            val hint = hints[0].lowercase(Locale.getDefault())
+            addAutofillableField(hint, node.autofillId, node.autofillValue)
+        } else if((node.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_PASSWORD) ||
+                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) ||
+                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)) ||
+            (node.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_NUMBER &&
+                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_NUMBER_VARIATION_PASSWORD))) {
+            addAutofillableField("password", node.autofillId, node.autofillValue)
+//        } else if(containsPasswordHint(node.idEntry) || containsPasswordHint(node.hint)) {
+//            addAutofillableField("password", node.autofillId, node.autofillValue)
+        } else if(node.htmlInfo?.attributes?.any { it.first == "type" && it.second == "password" } == true) {
+            addAutofillableField("password", node.autofillId, node.autofillValue)
         }
         val webDomain = node.webDomain
         if (webDomain != null) {

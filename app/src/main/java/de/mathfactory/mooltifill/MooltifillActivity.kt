@@ -19,7 +19,6 @@
 
 package de.mathfactory.mooltifill
 
-import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -30,7 +29,7 @@ import android.view.autofill.AutofillValue
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.firstOrNull
+import kotlin.random.Random
 
 class MooltifillActivity : AppCompatActivity() {
 
@@ -42,19 +41,10 @@ class MooltifillActivity : AppCompatActivity() {
         const val EXTRA_SAVE = "extra_save"
         private const val SERVICE_NAME = "android-autofill"
 
-        private suspend fun connect(context: Context): MooltipassDevice? {
-            val device =
-                MooltipassScan().deviceFlow(context).firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
-
-            val dev = MooltipassDevice(context, device ?: return null)
-            dev.connect(CoroutineScope(Dispatchers.IO))
-            return dev
-        }
-
         private suspend fun getPassword(context: Context, query: String): String? {
             if(query.isBlank()) return null
             val f = BleMessageFactory()
-            val device = connect(context) ?: return null // "Mooltipass device not accessible"
+            val device = MooltipassDevice.connect(context) ?: return null // "Mooltipass device not accessible"
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials(
                 SERVICE_NAME, query))
@@ -68,7 +58,7 @@ class MooltifillActivity : AppCompatActivity() {
         suspend fun setPassword(context: Context, query: String, pass: String): Boolean {
             if(query.isBlank()) return false
             val f = BleMessageFactory()
-            val device = connect(context) ?: return false // "Mooltipass device not accessible"
+            val device = MooltipassDevice.connect(context) ?: return false // "Mooltipass device not accessible"
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials(SERVICE_NAME, query, null, null, pass))
             val credAnswer = device.communicate(f.serialize(cred))?.let(f::deserialize)
@@ -78,6 +68,16 @@ class MooltifillActivity : AppCompatActivity() {
             if(credAnswer.data[0].toInt() != 1) return false // "Item save failed"
 
             return true
+        }
+
+        suspend fun ping(context: Context): Boolean {
+            val f = BleMessageFactory()
+            val device = MooltipassDevice.connect(context) ?: return false
+            device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+            val random = List(4) { Random.nextInt(0, 256) }
+            val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
+            val answer = device.communicate(f.serialize(ping))?.let(f::deserialize) ?: return false
+            return answer.cmd == MooltipassCommand.PING_BLE && ping.data contentEquals answer.data
         }
     }
 
