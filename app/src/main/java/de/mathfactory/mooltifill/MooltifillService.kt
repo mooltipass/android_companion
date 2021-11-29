@@ -27,6 +27,7 @@ import android.os.CancellationSignal
 import android.service.autofill.*
 import android.text.InputType
 import android.util.Log
+import android.view.View
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
@@ -34,7 +35,9 @@ import androidx.collection.ArrayMap
 import kotlinx.coroutines.*
 import java.util.*
 
-private class AutofillInfo(val query: String, val autofillIds: List<Pair<AutofillId, AutofillValue?>>) {
+private class AutofillInfo(val query: String, private val autofillIds: Map<String, Pair<AutofillId, AutofillValue?>>) {
+    public fun username() = autofillIds[View.AUTOFILL_HINT_USERNAME] ?: autofillIds[View.AUTOFILL_HINT_EMAIL_ADDRESS]
+    public fun password() = autofillIds[View.AUTOFILL_HINT_PASSWORD]
 
 }
 
@@ -47,8 +50,7 @@ class MooltifillService : AutofillService() {
         val webDomain = StringBuilder()
         //val isManual = (request.flags and FillRequest.FLAG_MANUAL_REQUEST) != 0
 
-        // Currently only use the first password field!
-        val autofillIds = getAutofillableFields(structure, webDomain).filterKeys { it.contains("password") }.values.take(1)
+        val autofillIds = getAutofillableFields(structure, webDomain)//.filterKeys { it.contains("password") }.values.take(1)
         if(SettingsActivity.isDebugEnabled(applicationContext)) {
             Log.d(TAG, "autofillable fields:$autofillIds")
         }
@@ -66,7 +68,9 @@ class MooltifillService : AutofillService() {
         }
         val info = getInfo(request.fillContexts)
 
-        if (info.autofillIds.isEmpty()) {
+        val username = info.username()?.first
+        val password = info.password()?.first
+        if (username == null || password == null) {
             callback.onSuccess(null)
             return
         }
@@ -74,28 +78,25 @@ class MooltifillService : AutofillService() {
         // Create the base response
         val response = FillResponse.Builder()
 
-        val ids = info.autofillIds.map(Pair<AutofillId, AutofillValue?>::first)
-        ids.forEach { id ->
-            val dataset = Dataset.Builder()
-            val presentation = remoteViews(packageName, "Mooltipass")
-            val intent = Intent(applicationContext, MooltifillActivity::class.java)
-            intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query.takeLast(31))
-            intent.putExtra(MooltifillActivity.EXTRA_ID, id)
-            val flags = if (Build.VERSION.SDK_INT >= 31) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-            val pi = PendingIntent.getActivity(applicationContext, 0, intent, flags)
-            dataset.setAuthentication(pi.intentSender)
-            dataset.setValue(id, null, presentation)
-            response.addDataset(dataset.build())
+        val dataset = Dataset.Builder()
+        val presentation = remoteViews(packageName, "Mooltipass")
+        val intent = Intent(applicationContext, MooltifillActivity::class.java)
+        intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query.take(31))
+        intent.putExtra(MooltifillActivity.EXTRA_USERNAME, username)
+        intent.putExtra(MooltifillActivity.EXTRA_PASSWORD, password)
+        val flags = if (Build.VERSION.SDK_INT >= 31) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
         }
+        val pi = PendingIntent.getActivity(applicationContext, 0, intent, flags)
+        dataset.setAuthentication(pi.intentSender)
+        dataset.setValue(username, null, presentation)
+        response.addDataset(dataset.build())
 
         // Add save info
         response.setSaveInfo(
-            // For now only save passwords
-            SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD, ids.toTypedArray()).build()
+            SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD or SaveInfo.SAVE_DATA_TYPE_USERNAME, arrayOf(username, password)).build()
         )
 
         callback.onSuccess(response.build())
@@ -103,19 +104,23 @@ class MooltifillService : AutofillService() {
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {
         val info = getInfo(request.fillContexts)
-        if(info.autofillIds.size != 1) {
-            callback.onFailure("Only single ids supported for now")
+        val username = info.username()?.second
+        val password = info.password()?.second
+        if(username == null) {
+            callback.onFailure("Missing username")
             return
         }
-        val id = info.autofillIds.first()
+        if(password == null) {
+            callback.onFailure("Missing password")
+            return
+        }
         val context = applicationContext
-        id.second?.let {
-            CoroutineScope(Dispatchers.IO).launch {
-                if(MooltifillActivity.setPassword(context, info.query.takeLast(31), it.textValue.toString())) {
-                    callback.onSuccess()
-                } else {
-                    callback.onFailure("Mooltifill save failed")
-                }
+        CoroutineScope(Dispatchers.IO).launch {
+            if(MooltifillActivity.setCredentials(context, info.query.take(31), username.textValue.toString(), password.textValue.toString())) {
+                callback.onSuccess()
+            } else {
+                callback.onFailure("Mooltifill save failed")
+            }
 //                val intent = Intent(context, MooltifillActivity::class.java)
 //                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 //                intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query)
@@ -123,7 +128,6 @@ class MooltifillService : AutofillService() {
 //                intent.putExtra(MooltifillActivity.EXTRA_SAVE, true)
 //                val pi = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
 //                callback.onSuccess(pi)
-            }
         }
     }
 
@@ -148,6 +152,62 @@ class MooltifillService : AutofillService() {
         return fields
     }
 
+    private fun inferHint(s: String?): String? {
+        return s?.lowercase()?.let {
+            when {
+                it.contains("label") -> null
+                it.contains("container") -> null
+                it.contains("password") -> View.AUTOFILL_HINT_PASSWORD
+                it.contains("passwort") -> View.AUTOFILL_HINT_PASSWORD
+                it.contains("username") -> View.AUTOFILL_HINT_USERNAME
+                it.contains("login") -> View.AUTOFILL_HINT_USERNAME
+                //it.contains("id") -> View.AUTOFILL_HINT_USERNAME
+                it.contains("email") -> View.AUTOFILL_HINT_EMAIL_ADDRESS
+                it.contains("e-mail") -> View.AUTOFILL_HINT_EMAIL_ADDRESS
+                //it.contains("name") -> View.AUTOFILL_HINT_NAME
+                //it.contains("phone") -> View.AUTOFILL_HINT_PHONE
+                else -> null
+            }
+        }
+    }
+
+    private fun getHint(node: AssistStructure.ViewNode): String? {
+        // return first autofill hint, if present
+        node.autofillHints?.firstOrNull()?.let { return it }
+        // ensure we are an EditText
+        if(node.className?.contains("EditText") == true) {
+            // infer hint from getHint()
+            inferHint(node.hint)?.let { return it }
+            // infer hint from id
+            inferHint(node.idEntry)?.let { return it }
+        }
+        // infer hint from input type
+        when(node.inputType and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_TEXT -> when (node.inputType and InputType.TYPE_MASK_VARIATION) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD -> View.AUTOFILL_HINT_PASSWORD
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+                InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS -> View.AUTOFILL_HINT_USERNAME
+                else -> null
+            }
+            InputType.TYPE_CLASS_NUMBER -> when(node.inputType and InputType.TYPE_MASK_VARIATION) {
+                InputType.TYPE_NUMBER_VARIATION_PASSWORD -> View.AUTOFILL_HINT_PASSWORD
+                else -> null
+            }
+            else -> null
+        }?.let { return it }
+        // infer hint from html info
+        if(node.htmlInfo?.attributes?.any { it.first == "type" && it.second == "password" } == true) {
+            return View.AUTOFILL_HINT_PASSWORD
+        }
+        if(node.htmlInfo?.attributes?.any {it.first == "type" && it.second == "text"} == true) {
+            return inferHint(node.htmlInfo?.attributes?.firstOrNull { it.first == "name" }?.second)
+                ?: inferHint(node.htmlInfo?.attributes?.firstOrNull { it.first == "id" }?.second)
+        }
+        // give up
+        return null
+    }
+
     /**
      * Adds any autofillable view from the [ViewNode] and its descendants to the map.
      */
@@ -167,27 +227,8 @@ class MooltifillService : AutofillService() {
                 }
             }
         }
-
-        fun containsPasswordHint(v: String?): Boolean {
-            return v?.lowercase()?.let { it.contains("password") || it.contains("passwort") } == true
-        }
-
-        val hints = node.autofillHints
-        if (hints != null && hints.isNotEmpty()) {
-            // TODO evaluate all hints
-            val hint = hints[0].lowercase(Locale.getDefault())
+        getHint(node)?.let { hint ->
             addAutofillableField(hint, node.autofillId, node.autofillValue)
-        } else if((node.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
-                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_PASSWORD) ||
-                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) ||
-                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)) ||
-            (node.inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_NUMBER &&
-                    (node.inputType and InputType.TYPE_MASK_VARIATION == InputType.TYPE_NUMBER_VARIATION_PASSWORD))) {
-            addAutofillableField("password", node.autofillId, node.autofillValue)
-//        } else if(containsPasswordHint(node.idEntry) || containsPasswordHint(node.hint)) {
-//            addAutofillableField("password", node.autofillId, node.autofillValue)
-        } else if(node.htmlInfo?.attributes?.any { it.first == "type" && it.second == "password" } == true) {
-            addAutofillableField("password", node.autofillId, node.autofillValue)
         }
         val webDomain = node.webDomain
         if (webDomain != null) {
