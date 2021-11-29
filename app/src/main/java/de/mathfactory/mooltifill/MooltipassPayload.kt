@@ -58,7 +58,7 @@ class MooltipassPayload {
             return bytes
         }
 
-        fun getCredentials(service: String, login: String?,): ByteArray {
+        fun getCredentials(service: String, login: String?): ByteArray {
             return getCredentials(
                 tr(service) + 0 + 0,
                 login?.let { tr(it) + 0 + 0},

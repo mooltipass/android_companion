@@ -19,10 +19,12 @@
 
 package de.mathfactory.mooltifill
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -57,10 +59,18 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
         supportActionBar?.setHomeButtonEnabled(false)
 
-        permissionSetup()
+        permissionSetup(this)
     }
 
-    private fun permissionSetup() {
+    private fun permissionSetup(context: Context) {
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+                if(isDebugEnabled(context)) {
+                    Log.d("Mooltifill", "permission result: $it")
+                }
+            }
+            permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
 //        if (ContextCompat.checkSelfPermission(
 //                this,
 //                Manifest.permission.ACCESS_COARSE_LOCATION
