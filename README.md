@@ -1,7 +1,7 @@
 # mooltifill-android
 An autofill service for the mooltipass ble device https://www.mymooltipass.com/. After installation there will be a new autofill service which adds
-an autofill option for password fields. When selected, the device is queried for the corresponding
-password (which has to be confirmed on the mooltipass device).
+an autofill option for login forms. When selected, the device is queried for the corresponding
+app/service (which has to be confirmed on the mooltipass device).
 ## Possible issues
 ### The device does not seem to be accessed
 Please:
