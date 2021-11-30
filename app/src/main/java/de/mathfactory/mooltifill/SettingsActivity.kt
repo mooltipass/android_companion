@@ -116,19 +116,35 @@ class SettingsActivity : AppCompatActivity() {
             private const val PING_TIMEOUT = 20000L
         }
         private lateinit var mEnableService: ActivityResultLauncher<Intent>
+        var mDefaultServiceSet = false
 
         override fun onCreate(savedInstanceState: Bundle?) {
-            mEnableService = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                onDefaultServiceSet(it)
-            }
+            mEnableService = registerForActivityResult(ActivityResultContracts.StartActivityForResult(), ::onDefaultServiceSet)
             super.onCreate(savedInstanceState)
+        }
+
+        override fun onResume() {
+            super.onResume()
+            findPreference<SwitchPreference>("enable_mooltifill")?.isChecked = mDefaultServiceSet || hasEnabledMooltifill(requireActivity())
+            // only use info from onDefaultServiceSet once, as it may change later manually by the user
+            mDefaultServiceSet = false
         }
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
-            findPreference<Preference>("enable_mooltifill")?.setOnPreferenceClickListener {
-                enableService(requireContext().applicationContext)
-                true
+//            findPreference<Preference>("enable_mooltifill")?.setOnPreferenceClickListener {
+//                enableService(requireContext().applicationContext)
+//                true
+//            }
+            findPreference<SwitchPreference>("enable_mooltifill")?.setOnPreferenceChangeListener { _, newValue ->
+                val activity = requireActivity()
+                if (newValue == true) {
+                    enableService(activity)
+                    hasEnabledMooltifill(activity)
+                } else {
+                    disableService(activity)
+                    true
+                }
             }
             findPreference<SwitchPreference>("debug")?.setOnPreferenceChangeListener { _, newValue ->
                 AwarenessService.setDebug(newValue == true)
@@ -151,12 +167,17 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        private fun hasEnabledMooltifill(context: Context): Boolean {
+        private fun hasEnabledMooltifill(context: Activity): Boolean {
             val autofillManager = context.getSystemService(AutofillManager::class.java)
             return autofillManager != null && autofillManager.hasEnabledAutofillServices()
         }
 
-        private fun enableService(context: Context) {
+        private fun disableService(context: Activity) {
+            val autofillManager = context.getSystemService(AutofillManager::class.java)
+            autofillManager.disableAutofillServices()
+        }
+
+        private fun enableService(context: Activity) {
             if (!hasEnabledMooltifill(context)) {
                 val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
                 intent.data = Uri.parse("package:de.mathfactory.mooltifill")
@@ -176,6 +197,7 @@ class SettingsActivity : AppCompatActivity() {
             when (resultCode.resultCode) {
                 Activity.RESULT_OK -> {
                     Toast.makeText(requireContext(), "Mooltifill enabled. Great!", Toast.LENGTH_SHORT).show()
+                    mDefaultServiceSet = true
                 }
                 Activity.RESULT_CANCELED -> {
 
