@@ -66,6 +66,9 @@ class MooltifillService : AutofillService() {
         if(SettingsActivity.isDebugEnabled(applicationContext)) {
             Log.d(TAG, "onFillRequest()")
         }
+
+        AwarenessService.onFillRequest(applicationContext)
+
         val info = getInfo(request.fillContexts)
 
         val username = info.username()?.first
