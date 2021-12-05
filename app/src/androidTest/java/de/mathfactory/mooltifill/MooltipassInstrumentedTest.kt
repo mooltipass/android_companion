@@ -98,8 +98,8 @@ class MooltifillInstrumentedTest {
             val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
             assertNotNull("Expected to find ble device", device)
             assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
-            val dev = MooltipassDevice(appContext, device!!)
-            dev.connect(CoroutineScope(Dispatchers.IO))
+            val dev = MooltipassDevice(device!!, true)
+            dev.connect(CoroutineScope(Dispatchers.IO), appContext)
             assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
             val random = List(4) { Random.nextInt(0, 256) }
             val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
@@ -134,7 +134,7 @@ class MooltifillInstrumentedTest {
             val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
             assertNotNull("Expected to find ble device", device)
             assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
-            val dev = MooltipassDevice(appContext, device!!)
+            val dev = MooltipassDevice(device!!, true)
             assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
 
             dev.disconnect()

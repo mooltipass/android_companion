@@ -19,6 +19,7 @@
 
 package de.mathfactory.mooltifill
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -29,7 +30,6 @@ import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.*
 import kotlin.random.Random
 
@@ -42,7 +42,12 @@ private sealed class CredentialResult(val credentials: Credentials?) {
     class Item(credentials: Credentials) : CredentialResult(credentials)
 }
 
-class MooltifillActivity : AppCompatActivity() {
+interface RequestCallback {
+    suspend fun onConnected() {}
+    suspend fun onRequestSent() {}
+}
+
+class MooltifillActivity : Activity() {
 
     @ExperimentalCoroutinesApi
     @FlowPreview
@@ -52,12 +57,14 @@ class MooltifillActivity : AppCompatActivity() {
         const val EXTRA_PASSWORD = "extra_password"
         const val EXTRA_SAVE = "extra_save"
 
-        private suspend fun getCredentials(context: Context, query: String): CredentialResult {
+        private suspend fun getCredentials(context: Context, query: String, cb: RequestCallback? = null): CredentialResult {
             if(query.isBlank()) return CredentialResult.InvalidQuery
             val f = BleMessageFactory()
-            val device = MooltipassDevice.connect(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
+            val device = AwarenessService.mooltipassDevice(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
+            cb?.onConnected()
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials(query, null))
+            cb?.onRequestSent()
             val credGetAnswer = device.communicate(f.serialize(credGet))?.let(f::deserialize)
             if(MooltipassCommand.GET_CREDENTIAL_BLE != credGetAnswer?.cmd) return CredentialResult.CommFail  // "Reading failed"
             if(credGetAnswer.data?.isEmpty() != false) return CredentialResult.NoItem // "No item found"
@@ -65,12 +72,14 @@ class MooltifillActivity : AppCompatActivity() {
                 ?: CredentialResult.ParseFail
         }
 
-        suspend fun setCredentials(context: Context, service: String, login: String, pass: String): Boolean {
+        suspend fun setCredentials(context: Context, service: String, login: String, pass: String, cb: RequestCallback? = null): Boolean {
             if(service.isBlank()) return false
             val f = BleMessageFactory()
-            val device = MooltipassDevice.connect(context) ?: return false // "Mooltipass device not accessible"
+            val device = AwarenessService.mooltipassDevice(context) ?: return false // "Mooltipass device not accessible"
+            cb?.onConnected()
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials(service, login, null, null, pass))
+            cb?.onRequestSent()
             val credAnswer = device.communicate(f.serialize(cred))?.let(f::deserialize)
 
             if(MooltipassCommand.STORE_CREDENTIAL_BLE != credAnswer?.cmd) return false // "Command failed"
@@ -82,7 +91,7 @@ class MooltifillActivity : AppCompatActivity() {
 
         suspend fun ping(context: Context): Boolean {
             val f = BleMessageFactory()
-            val device = MooltipassDevice.connect(context) ?: return false
+            val device = AwarenessService.mooltipassDevice(context) ?: return false
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val random = List(4) { Random.nextInt(0, 256) }
             val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
@@ -91,18 +100,26 @@ class MooltifillActivity : AppCompatActivity() {
         }
     }
 
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_mooltifill)
+        this.setFinishOnTouchOutside(false)
+        findViewById<TextView>(R.id.btn_cancel)?.setOnClickListener { setResult(RESULT_CANCELED);finish() }
         intent?.getStringExtra(EXTRA_QUERY)?.let { query ->
             val save = intent?.getBooleanExtra(EXTRA_SAVE, false) ?: false
             if (save) {
                 // save is handled by MooltifillService
             } else /* query */ {
-                findViewById<TextView>(R.id.textView)?.text = "Query: " + (query ?: "<?>")
+                findViewById<TextView>(R.id.txt_query)?.text = "Query: " + (query ?: "<?>")
                 CoroutineScope(Dispatchers.IO).launch {
-                    val reply = getCredentials(applicationContext, query)
+                    val reply = getCredentials(applicationContext, query, object :RequestCallback {
+                        override suspend fun onConnected() = withContext(Dispatchers.Main) {
+                            findViewById<TextView>(R.id.txt_status)?.text = "Status: sending request"
+                        }
+                        override suspend fun onRequestSent() = withContext(Dispatchers.Main) {
+                            findViewById<TextView>(R.id.txt_status)?.text = "Status: request sent, please check device"
+                        }
+                    })
                     when(reply) {
                         is CredentialResult.Item -> {}
                         is CredentialResult.NoItem -> withContext(Dispatchers.Main) {

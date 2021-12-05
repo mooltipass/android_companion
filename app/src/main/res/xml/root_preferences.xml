@@ -3,7 +3,9 @@
 
     <PreferenceCategory
         app:title="@string/settings_header">
-        <Preference
+        <SwitchPreference
+            app:summaryOn="Mooltifill enabled"
+            app:summaryOff="Mooltifill disabled"
             app:key="enable_mooltifill"
             app:title="Enable Mooltipass Autofill Service" />
         <Preference
