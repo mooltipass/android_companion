@@ -37,6 +37,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
+import androidx.preference.SwitchPreference
 import kotlinx.coroutines.*
 
 class SettingsActivity : AppCompatActivity() {
@@ -60,6 +61,7 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setHomeButtonEnabled(false)
 
         permissionSetup(this)
+        AwarenessService.ensureService(this)
     }
 
     private fun permissionSetup(context: Context) {
@@ -126,6 +128,10 @@ class SettingsActivity : AppCompatActivity() {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
             findPreference<Preference>("enable_mooltifill")?.setOnPreferenceClickListener {
                 enableService(requireContext().applicationContext)
+                true
+            }
+            findPreference<SwitchPreference>("debug")?.setOnPreferenceChangeListener { _, newValue ->
+                AwarenessService.setDebug(newValue == true)
                 true
             }
             findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {

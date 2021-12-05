@@ -7,5 +7,7 @@
     <string name="settings_header">Settings</string>
 
     <string name="paranoia_title">Paranoia level</string>
+    <string name="awareness_title">Mooltipass Device Status</string>
+    <string name="default_awareness_message">Disconnected</string>
 
 </resources>

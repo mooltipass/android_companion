@@ -58,7 +58,7 @@ private class MooltipassGatt(val gatt: BluetoothGatt) {
 }
 
 @ExperimentalCoroutinesApi
-class MooltipassDevice(private val context: Context, private val device: BluetoothDevice) {
+class MooltipassDevice(private val device: BluetoothDevice, private var debug: Boolean) {
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
 
     private suspend fun waitBusy() {
@@ -147,7 +147,7 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
 
     private val commFlow: MutableStateFlow<CommOp> = MutableStateFlow(CommOp.Disconnected())
 
-    fun connect(scope: CoroutineScope) = scope.launch {
+    fun connect(scope: CoroutineScope, context: Context, bleCallback: BluetoothGattCallback? = null) = scope.launch {
         callbackFlow<CommOp> {
             val cb = object : BluetoothGattCallback() {
                 private var mtuRequested: Boolean = false
@@ -159,10 +159,11 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                 }
 
                 override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onCharacteristicRead  $status " + characteristic?.value?.toHexString())
                     }
                     trySend(CommOp.Read(status, characteristic?.value))
+                    bleCallback?.onCharacteristicRead(gatt, characteristic, status)
                 }
 
                 override fun onCharacteristicWrite(
@@ -170,32 +171,35 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                     characteristic: BluetoothGattCharacteristic?,
                     status: Int
                 ) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onCharacteristicWrite $status " + characteristic?.value?.toHexString())
                     }
                     trySend(CommOp.Write(status))
+                    bleCallback?.onCharacteristicWrite(gatt, characteristic, status)
                 }
 
                 override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onCharacteristicChanged " + characteristic?.value?.toHexString())
                     }
                     trySend(CommOp.ChangedChar(characteristic?.value))
+                    bleCallback?.onCharacteristicChanged(gatt, characteristic)
                 }
 
                 override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onConnectionStateChange $status $newState")
                     }
-                    when(status) {
-                        BluetoothGatt.GATT_SUCCESS ->
-                            when (newState) {
-                                BluetoothProfile.STATE_CONNECTED ->
+                    when (newState) {
+                        BluetoothProfile.STATE_CONNECTED ->
+                            when(status) {
+                                BluetoothGatt.GATT_SUCCESS ->
                                     gatt?.discoverServices()
-                                BluetoothProfile.STATE_DISCONNECTED ->
-                                    channel.close()
                             }
+                        BluetoothProfile.STATE_DISCONNECTED ->
+                            channel.close()
                     }
+                    bleCallback?.onConnectionStateChange(gatt, status, newState)
                 }
 
                 override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
@@ -208,6 +212,7 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                             channel.close()
                         }
                     }
+                    bleCallback?.onMtuChanged(gatt, mtu, status)
                 }
 
                 override fun onDescriptorWrite(
@@ -215,7 +220,7 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                     descriptor: BluetoothGattDescriptor?,
                     status: Int
                 ) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onDescriptorWrite")
                     }
                     if (descriptor?.uuid.toString() == UUID_DESCRIPTOR_CCC) {
@@ -227,6 +232,7 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                             channel.close()
                         }
                     }
+                    bleCallback?.onDescriptorWrite(gatt, descriptor, status)
                 }
 
                 fun requestNotifications(gatt: BluetoothGatt, char: BluetoothGattCharacteristic): Boolean {
@@ -237,7 +243,7 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                 }
 
                 override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-                    if(SettingsActivity.isDebugEnabled(context)) {
+                    if(debug) {
                         Log.d("Mooltifill", "onServiceDiscover $status")
                     }
                     if(gatt != null && status == 0) {
@@ -258,14 +264,15 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
                             }
                         }
                     }
+                    bleCallback?.onServicesDiscovered(gatt, status)
                 }
             }
-            val gatt = device.connectGatt(context, true, cb, BluetoothDevice.TRANSPORT_LE)
+            val gatt = device.connectGatt(context, false, cb, BluetoothDevice.TRANSPORT_LE)
             awaitClose {
                 gatt.disconnect()
             }
         }.collect {
-            if(SettingsActivity.isDebugEnabled(context)) {
+            if(debug) {
                 Log.d("Mooltifill", "commFlow $it")
             }
             commFlow.emit(it)
@@ -276,15 +283,19 @@ class MooltipassDevice(private val context: Context, private val device: Bluetoo
         mpGatt.await().gatt.disconnect()
     }
 
+    fun setDebug(debug: Boolean) {
+        this.debug = debug
+    }
+
     @FlowPreview
     companion object {
-        suspend fun connect(context: Context): MooltipassDevice? {
+        suspend fun connect(context: Context, bleCallback: BluetoothGattCallback? = null): MooltipassDevice? {
             val device = MooltipassScan().deviceFlow(context)
                 .firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
                 ?: return null
 
-            val dev = MooltipassDevice(context, device)
-            dev.connect(CoroutineScope(Dispatchers.IO))
+            val dev = MooltipassDevice(device, SettingsActivity.isDebugEnabled(context))
+            dev.connect(CoroutineScope(Dispatchers.IO), context, bleCallback)
             return dev
         }
     }
