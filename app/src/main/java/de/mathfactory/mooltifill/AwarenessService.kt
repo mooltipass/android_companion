@@ -53,7 +53,13 @@ class AwarenessService : Service() {
             ensureService(context)
         }
 
-        fun ensureService(context: Context, msg: String? = null) {
+        fun stopService(context: Context) {
+            val intent = Intent(context, AwarenessService::class.java)
+            context.stopService(intent)
+        }
+
+        fun ensureService(context: Context, msg: String? = null, force: Boolean = false) {
+            if(!force && !SettingsActivity.isAwarenessEnabled(context)) return
             val intent = Intent(context, AwarenessService::class.java)
             if(msg != null) intent.putExtra(EXTRA_MESSAGE, msg)
             // start service

@@ -21,6 +21,13 @@
             app:enabled="false"
             app:useSimpleSummaryProvider="true" />
         <SwitchPreference
+            app:key="awareness"
+            app:title="Mooltipass Awareness"
+            app:summaryOn="Track connection state of the mooltipass device and show status notification"
+            app:summaryOff="Do not track connection state of the mooltipass device"
+            app:defaultValue="true"
+            />
+        <SwitchPreference
             app:key="debug"
             app:title="Debug Output to logcat"
             app:defaultValue="false"
