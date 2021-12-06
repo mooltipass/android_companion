@@ -47,6 +47,7 @@ private const val UUID_CHAR_READ = "4c64e90a-5f9c-4d6b-9c29-bdaa6141f9f7"
 private const val UUID_CHAR_WRITE = "fe8f1a02-6311-475f-a296-553e3566b895"
 private const val UUID_DESCRIPTOR_CCC = "00002902-0000-1000-8000-00805f9b34fb"
 private const val MTU_BYTES = 128
+private const val N_RETRIES = 5
 
 private fun filter(device: BluetoothDevice) = device.name == DEVICE_NAME /* && device.bondState == BluetoothDevice.BOND_BONDED*/
 
@@ -142,7 +143,16 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
         send(pkt) ?: return null
         //waitForChange() ?: return null
         return readMessage()
+    }
 
+    suspend fun communicate(f: BleMessageFactory, msg: MooltipassMessage): MooltipassMessage? {
+        for (i in 0 until N_RETRIES) {
+            val v = communicate(f.serialize(msg))?.let(f::deserialize)
+            if(v?.cmd != MooltipassCommand.PLEASE_RETRY_BLE) {
+                return v
+            }
+        }
+        return null
     }
 
     private val commFlow: MutableStateFlow<CommOp> = MutableStateFlow(CommOp.Disconnected())

@@ -65,7 +65,7 @@ class MooltifillActivity : Activity() {
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials(query, null))
             cb?.onRequestSent()
-            val credGetAnswer = device.communicate(f.serialize(credGet))?.let(f::deserialize)
+            val credGetAnswer = device.communicate(f, credGet)
             if(MooltipassCommand.GET_CREDENTIAL_BLE != credGetAnswer?.cmd) return CredentialResult.CommFail  // "Reading failed"
             if(credGetAnswer.data?.isEmpty() != false) return CredentialResult.NoItem // "No item found"
             return MooltipassPayload.answerGetCredentials(query, credGetAnswer.data)?.let { CredentialResult.Item(it) }
@@ -80,7 +80,7 @@ class MooltifillActivity : Activity() {
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials(service, login, null, null, pass))
             cb?.onRequestSent()
-            val credAnswer = device.communicate(f.serialize(cred))?.let(f::deserialize)
+            val credAnswer = device.communicate(f, cred)
 
             if(MooltipassCommand.STORE_CREDENTIAL_BLE != credAnswer?.cmd) return false // "Command failed"
             if(credAnswer.data?.size != 1) return false
@@ -95,7 +95,7 @@ class MooltifillActivity : Activity() {
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val random = List(4) { Random.nextInt(0, 256) }
             val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
-            val answer = device.communicate(f.serialize(ping))?.let(f::deserialize) ?: return false
+            val answer = device.communicate(f, ping) ?: return false
             return answer.cmd == MooltipassCommand.PING_BLE && ping.data contentEquals answer.data
         }
     }
