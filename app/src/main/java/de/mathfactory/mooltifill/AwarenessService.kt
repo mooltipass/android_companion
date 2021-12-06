@@ -33,7 +33,9 @@ class AwarenessService : Service() {
     companion object {
         internal fun CoroutineScope.notify(context: Context, msg: String) = launch {
             serviceStarted.await()
-            Log.d("Mooltifill", "Aware: $msg")
+            if(SettingsActivity.isDebugEnabled(context)) {
+                Log.d("Mooltifill", "Aware: $msg")
+            }
             val notification = createNotification(context, msg)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(ONGOING_NOTIFICATION_ID, notification)
@@ -135,7 +137,9 @@ class AwarenessService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("Mooltifill", "onStartCommand")
+        if(SettingsActivity.isDebugEnabled(this)) {
+            Log.d("Mooltifill", "onStartCommand")
+        }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val msg = intent?.getStringExtra(EXTRA_MESSAGE)
             ?: manager.activeNotifications.firstOrNull()?.notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)
