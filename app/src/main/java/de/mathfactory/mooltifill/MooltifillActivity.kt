@@ -110,14 +110,14 @@ class MooltifillActivity : Activity() {
             if (save) {
                 // save is handled by MooltifillService
             } else /* query */ {
-                findViewById<TextView>(R.id.txt_query)?.text = "Query: " + (query ?: "<?>")
+                findViewById<TextView>(R.id.txt_query)?.text = query
                 CoroutineScope(Dispatchers.IO).launch {
                     val reply = getCredentials(applicationContext, query, object :RequestCallback {
                         override suspend fun onConnected() = withContext(Dispatchers.Main) {
-                            findViewById<TextView>(R.id.txt_status)?.text = "Status: sending request"
+                            findViewById<TextView>(R.id.txt_status)?.text = "sending request..."
                         }
                         override suspend fun onRequestSent() = withContext(Dispatchers.Main) {
-                            findViewById<TextView>(R.id.txt_status)?.text = "Status: request sent, please check device"
+                            findViewById<TextView>(R.id.txt_status)?.text = "request sent, please check device"
                         }
                     })
                     when(reply) {
