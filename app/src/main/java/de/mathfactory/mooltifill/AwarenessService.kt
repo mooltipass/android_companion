@@ -16,16 +16,50 @@ import kotlinx.coroutines.*
 
 
 class AwarenessCallback(private val context: Context) : BluetoothGattCallback() {
-    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-        val msg = when (newState) {
+    private var mLocked: Boolean? = null
+    private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
+
+    private fun sendNotification() {
+        val msg = when (mConnectState) {
             BluetoothProfile.STATE_CONNECTED -> "Connected"
             BluetoothProfile.STATE_DISCONNECTED -> "Disconnected"
             BluetoothProfile.STATE_DISCONNECTING -> "Disconnecting"
             BluetoothProfile.STATE_CONNECTING -> "Connecting"
-            else -> "Unknown State: $newState"
+            else -> "Unknown State: $mConnectState"
+        } + when(mLocked) {
+            true -> " (locked)"
+            false -> " (unlocked)"
+            null -> ""
         }
 
         CoroutineScope(Dispatchers.Main).notify(context, msg)
+    }
+
+    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+        mConnectState = newState
+        if(newState != BluetoothProfile.STATE_CONNECTED) mLocked = null
+        else {
+            // send query for lock status
+            CoroutineScope(Dispatchers.IO).launch {
+                val device = AwarenessService.mooltipassDevice(context)
+                val f = BleMessageFactory()
+                device?.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+                // send status request
+                device?.send(f.serialize(MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)))
+            }
+        }
+        sendNotification()
+    }
+
+    override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+        // be aware of lock status
+        // TODO this could be read from MooltipassDevice, implement a callback there instead of reparsing here
+        characteristic?.value?.let { data ->
+            MooltipassPayload.tryParseIsLocked(data)?.let {
+                mLocked = it
+                sendNotification()
+            }
+        }
     }
 }
 

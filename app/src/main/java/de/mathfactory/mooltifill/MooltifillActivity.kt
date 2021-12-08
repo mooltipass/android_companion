@@ -45,6 +45,7 @@ private sealed class CredentialResult(val credentials: Credentials?) {
 interface RequestCallback {
     suspend fun onConnected() {}
     suspend fun onRequestSent() {}
+    suspend fun onLocked() {}
 }
 
 class MooltifillActivity : Activity() {
@@ -62,6 +63,12 @@ class MooltifillActivity : Activity() {
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
             cb?.onConnected()
+            if(device.isLocked() == true) {
+                cb?.onLocked()
+                do {
+                    delay(1000)
+                } while (device.isLocked() == true)
+            }
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials(query, null))
             cb?.onRequestSent()
@@ -115,6 +122,9 @@ class MooltifillActivity : Activity() {
                     val reply = getCredentials(applicationContext, query, object :RequestCallback {
                         override suspend fun onConnected() = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = "sending request..."
+                        }
+                        override suspend fun onLocked() {
+                            findViewById<TextView>(R.id.txt_status)?.text = "please unlock device to continue"
                         }
                         override suspend fun onRequestSent() = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = "request sent, please check device"

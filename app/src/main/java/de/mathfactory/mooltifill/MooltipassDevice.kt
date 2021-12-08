@@ -60,6 +60,7 @@ private class MooltipassGatt(val gatt: BluetoothGatt) {
 
 @ExperimentalCoroutinesApi
 class MooltipassDevice(private val device: BluetoothDevice, private var debug: Boolean) {
+    private var mLocked: Boolean? = null
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
 
     private suspend fun waitBusy() {
@@ -194,6 +195,12 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                     }
                     trySend(CommOp.ChangedChar(characteristic?.value))
                     bleCallback?.onCharacteristicChanged(gatt, characteristic)
+                    // be aware of lock status
+                    characteristic?.value?.let { data ->
+                        MooltipassPayload.tryParseIsLocked(data)?.let {
+                            mLocked = it
+                        }
+                    }
                 }
 
                 override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
@@ -295,6 +302,10 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
 
     fun setDebug(debug: Boolean) {
         this.debug = debug
+    }
+
+    fun isLocked(): Boolean? {
+        return mLocked
     }
 
     @FlowPreview
