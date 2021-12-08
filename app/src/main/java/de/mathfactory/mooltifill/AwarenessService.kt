@@ -20,6 +20,7 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
     private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
 
     private fun sendNotification() {
+        if(!SettingsActivity.isAwarenessEnabled(context)) return
         val msg = when (mConnectState) {
             BluetoothProfile.STATE_CONNECTED -> "Connected"
             BluetoothProfile.STATE_DISCONNECTED -> "Disconnected"
@@ -146,6 +147,7 @@ class AwarenessService : Service() {
 
     private val baReceiver = object :BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if(!SettingsActivity.isAwarenessEnabled(context)) return
             val msg = when(intent.action) {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     when(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
