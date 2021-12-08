@@ -16,16 +16,50 @@ import kotlinx.coroutines.*
 
 
 class AwarenessCallback(private val context: Context) : BluetoothGattCallback() {
-    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-        val msg = when (newState) {
+    private var mLocked: Boolean? = null
+    private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
+
+    private fun sendNotification() {
+        val msg = when (mConnectState) {
             BluetoothProfile.STATE_CONNECTED -> "Connected"
             BluetoothProfile.STATE_DISCONNECTED -> "Disconnected"
             BluetoothProfile.STATE_DISCONNECTING -> "Disconnecting"
             BluetoothProfile.STATE_CONNECTING -> "Connecting"
-            else -> "Unknown State: $newState"
+            else -> "Unknown State: $mConnectState"
+        } + when(mLocked) {
+            true -> " (locked)"
+            false -> " (unlocked)"
+            null -> ""
         }
 
         CoroutineScope(Dispatchers.Main).notify(context, msg)
+    }
+
+    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+        mConnectState = newState
+        if(newState != BluetoothProfile.STATE_CONNECTED) mLocked = null
+        else {
+            // send query for lock status
+            CoroutineScope(Dispatchers.IO).launch {
+                val device = AwarenessService.mooltipassDevice(context)
+                val f = BleMessageFactory()
+                device?.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+                // send status request
+                device?.send(f.serialize(MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)))
+            }
+        }
+        sendNotification()
+    }
+
+    override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+        // be aware of lock status
+        // TODO this could be read from MooltipassDevice, implement a callback there instead of reparsing here
+        characteristic?.value?.let { data ->
+            MooltipassPayload.tryParseIsLocked(data)?.let {
+                mLocked = it
+                sendNotification()
+            }
+        }
     }
 }
 
@@ -33,7 +67,9 @@ class AwarenessService : Service() {
     companion object {
         internal fun CoroutineScope.notify(context: Context, msg: String) = launch {
             serviceStarted.await()
-            Log.d("Mooltifill", "Aware: $msg")
+            if(SettingsActivity.isDebugEnabled(context)) {
+                Log.d("Mooltifill", "Aware: $msg")
+            }
             val notification = createNotification(context, msg)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(ONGOING_NOTIFICATION_ID, notification)
@@ -51,7 +87,13 @@ class AwarenessService : Service() {
             ensureService(context)
         }
 
-        fun ensureService(context: Context, msg: String? = null) {
+        fun stopService(context: Context) {
+            val intent = Intent(context, AwarenessService::class.java)
+            context.stopService(intent)
+        }
+
+        fun ensureService(context: Context, msg: String? = null, force: Boolean = false) {
+            if(!force && !SettingsActivity.isAwarenessEnabled(context)) return
             val intent = Intent(context, AwarenessService::class.java)
             if(msg != null) intent.putExtra(EXTRA_MESSAGE, msg)
             // start service
@@ -72,7 +114,7 @@ class AwarenessService : Service() {
         internal fun createNotification(context: Context, text: CharSequence?): Notification {
             val pendingIntent: PendingIntent =
                 Intent(context, SettingsActivity::class.java).let { notificationIntent ->
-                    PendingIntent.getActivity(context, 0, notificationIntent, 0)
+                    PendingIntent.getActivity(context, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
                 }
             createNotificationChannel(context)
             return NotificationCompat.Builder(context, CHANNEL_ID)
@@ -135,7 +177,9 @@ class AwarenessService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("Mooltifill", "onStartCommand")
+        if(SettingsActivity.isDebugEnabled(this)) {
+            Log.d("Mooltifill", "onStartCommand")
+        }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val msg = intent?.getStringExtra(EXTRA_MESSAGE)
             ?: manager.activeNotifications.firstOrNull()?.notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)
