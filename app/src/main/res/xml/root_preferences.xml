@@ -8,6 +8,12 @@
             app:summaryOff="Mooltifill disabled"
             app:key="enable_mooltifill"
             app:title="Enable Mooltipass Autofill Service" />
+        <SwitchPreference
+            app:key="awareness"
+            app:title="Mooltipass Awareness"
+            app:summaryOn="Track connection state of the mooltipass device and show status notification"
+            app:summaryOff="Do not track connection state of the mooltipass device"
+            app:defaultValue="true" />
         <Preference
             app:key="test_ping"
             app:title="Test Mooltipass Device Connection"

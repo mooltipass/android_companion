@@ -31,7 +31,7 @@ private const val HID_PACKET_SIZE = 64
 private const val HID_PACKET_DATA_PAYLOAD = HID_PACKET_SIZE - HID_HEADER_SIZE
 private const val MP_PACKET_DATA_PAYLOAD = HID_PACKET_DATA_PAYLOAD - PACKET_DATA_OFFSET
 
-class BleMessageFactory : MessageFactory {
+class BleMessageFactory(private val log: Boolean = true) : MessageFactory {
 
     var flip = false
 
@@ -39,14 +39,14 @@ class BleMessageFactory : MessageFactory {
         val nPkts = (data[0][1].toUByte().toInt() % 16) + 1
         val id = data[0][1].toUByte().toInt() shr 4
         if(nPkts != data.size) {
-            Log.e("Mooltifill", "Wrong number of reported packages: $nPkts != ${data.size}")
+            if(log) Log.e("Mooltifill", "Wrong number of reported packages: $nPkts != ${data.size}")
             return null
         }
         val len = getShort(data[0], HID_HEADER_SIZE + PACKET_LEN_OFFSET)
         val cmdInt = getShort(data[0], HID_HEADER_SIZE + PACKET_CMD_OFFSET)
         val hidPayload = data.fold(ByteArray(0)) {a, chunk -> a + chunk.sliceArray(2 until 64)}
         if(len > hidPayload.size - PACKET_DATA_OFFSET) {
-            Log.e("Mooltifill", "Not enough data for reported length: $len > ${hidPayload.size - PACKET_DATA_OFFSET}")
+            if(log) Log.e("Mooltifill", "Not enough data for reported length: $len > ${hidPayload.size - PACKET_DATA_OFFSET}")
             return null
         }
         MooltipassCommand.fromInt(cmdInt)?.let {

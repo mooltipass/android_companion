@@ -91,5 +91,17 @@ class MooltipassPayload {
                 null
             }
         }
+
+        fun tryParseIsLocked(data: ByteArray): Boolean? {
+            val f = BleMessageFactory(false)
+            f.deserialize(arrayOf(data))?.let { msg ->
+                if(msg.cmd == MooltipassCommand.MOOLTIPASS_STATUS_BLE &&
+                    msg.data != null &&
+                    msg.data.size == 5) {
+                    return msg.data[0].toInt() and 0x4 == 0x0
+                }
+            }
+            return null
+        }
     }
 }

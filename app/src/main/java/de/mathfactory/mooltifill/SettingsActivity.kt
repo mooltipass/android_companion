@@ -43,9 +43,11 @@ import kotlinx.coroutines.*
 class SettingsActivity : AppCompatActivity() {
 
     companion object {
-        fun isDebugEnabled(context: Context): Boolean {
-            return PreferenceManager.getDefaultSharedPreferences(context).getBoolean("debug", false)
-        }
+        fun isDebugEnabled(context: Context): Boolean = setting(context, "debug", false)
+        fun isAwarenessEnabled(context: Context): Boolean = setting(context, "awareness", true)
+
+        private fun setting(context: Context, key: String, default: Boolean) =
+            PreferenceManager.getDefaultSharedPreferences(context).getBoolean(key, default)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,15 +141,20 @@ class SettingsActivity : AppCompatActivity() {
             findPreference<SwitchPreference>("enable_mooltifill")?.setOnPreferenceChangeListener { _, newValue ->
                 val activity = requireActivity()
                 if (newValue == true) {
-                    enableService(activity)
+                    enableMooltifill(activity)
                     hasEnabledMooltifill(activity)
                 } else {
-                    disableService(activity)
+                    disableMooltifill(activity)
                     true
                 }
             }
             findPreference<SwitchPreference>("debug")?.setOnPreferenceChangeListener { _, newValue ->
                 AwarenessService.setDebug(newValue == true)
+                true
+            }
+            findPreference<SwitchPreference>("awareness")?.setOnPreferenceChangeListener { _, newValue ->
+                if(newValue == false) AwarenessService.stopService(requireContext())
+                else AwarenessService.ensureService(requireContext(), null, true)
                 true
             }
             findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {
@@ -172,12 +179,12 @@ class SettingsActivity : AppCompatActivity() {
             return autofillManager != null && autofillManager.hasEnabledAutofillServices()
         }
 
-        private fun disableService(context: Activity) {
+        private fun disableMooltifill(context: Activity) {
             val autofillManager = context.getSystemService(AutofillManager::class.java)
             autofillManager.disableAutofillServices()
         }
 
-        private fun enableService(context: Activity) {
+        private fun enableMooltifill(context: Activity) {
             if (!hasEnabledMooltifill(context)) {
                 val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
                 intent.data = Uri.parse("package:de.mathfactory.mooltifill")
