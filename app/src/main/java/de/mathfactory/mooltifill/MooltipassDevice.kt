@@ -63,6 +63,9 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
     private var mLocked: Boolean? = null
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
 
+    suspend fun hasCommService(): Boolean = mpGatt.await().service() != null
+
+
     private suspend fun waitBusy() {
         commFlow.first { !it.busy }
     }
@@ -264,22 +267,21 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                         Log.d("Mooltifill", "onServiceDiscover $status")
                     }
                     if(gatt != null && status == 0) {
-                        gatt.services.firstOrNull {it.uuid.toString() == UUID_COMM_SERVICE}?.let {
-                            val mp = MooltipassGatt(gatt)
-                            this@MooltipassDevice.mpGatt.complete(mp)
-                            mp.readCharacteristic()?.let { read_char ->
-                                launch {
-                                    for(i in 1..20) {
-                                        if(!requestNotifications(gatt, read_char)) {
-                                            Log.w("Mooltifill", "requestNotifications() failed [$i]")
-                                            delay(500L)
-                                        } else return@launch
-                                    }
-                                    Log.e("Mooltifill", "failed to subscribe to notifications")
-                                    channel.close()
+                        val mp = MooltipassGatt(gatt)
+                        this@MooltipassDevice.mpGatt.complete(mp)
+                        mp.readCharacteristic()?.let { read_char ->
+                            launch {
+                                for(i in 1..20) {
+                                    if(!requestNotifications(gatt, read_char)) {
+                                        Log.w("Mooltifill", "requestNotifications() failed [$i]")
+                                        delay(500L)
+                                    } else return@launch
                                 }
+                                Log.e("Mooltifill", "failed to subscribe to notifications")
+                                channel.close()
                             }
                         }
+
                     }
                     bleCallback?.onServicesDiscovered(gatt, status)
                 }

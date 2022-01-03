@@ -163,12 +163,7 @@ class SettingsActivity : AppCompatActivity() {
                     val ping = withContext(Dispatchers.IO) {
                         MooltifillActivity.ping(requireContext())
                     }
-                    val msg = if (ping) {
-                        "Successfully connected to device!"
-                    } else {
-                        "Device access failed."
-                    }
-                    it.summary = msg
+                    it.summary = ping.getOrNull() ?: ping.exceptionOrNull()?.message
                 }
                 true
             }
