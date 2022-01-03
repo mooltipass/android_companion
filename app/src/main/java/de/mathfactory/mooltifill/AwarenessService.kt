@@ -106,7 +106,7 @@ class AwarenessService : Service() {
         }
 
         suspend fun mooltipassDevice(context: Context): MooltipassDevice? {
-            if(device == null) {
+            if(device == null || device?.isDisconnected() != false) {
                 device = MooltipassDevice.connect(context, AwarenessCallback(context))
             }
             return device
