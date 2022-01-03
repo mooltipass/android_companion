@@ -20,7 +20,6 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
     private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
 
     private fun sendNotification() {
-        if(!SettingsActivity.isAwarenessEnabled(context)) return
         val msg = when (mConnectState) {
             BluetoothProfile.STATE_CONNECTED -> "Connected"
             BluetoothProfile.STATE_DISCONNECTED -> "Disconnected"
@@ -67,6 +66,7 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
 class AwarenessService : Service() {
     companion object {
         internal fun CoroutineScope.notify(context: Context, msg: String) = launch {
+            if(!SettingsActivity.isAwarenessEnabled(context)) return@launch
             serviceStarted.await()
             if(SettingsActivity.isDebugEnabled(context)) {
                 Log.d("Mooltifill", "Aware: $msg")
@@ -106,7 +106,7 @@ class AwarenessService : Service() {
         }
 
         suspend fun mooltipassDevice(context: Context): MooltipassDevice? {
-            if(device == null) {
+            if(device == null || device?.isDisconnected() != false) {
                 device = MooltipassDevice.connect(context, AwarenessCallback(context))
             }
             return device
@@ -147,7 +147,6 @@ class AwarenessService : Service() {
 
     private val baReceiver = object :BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if(!SettingsActivity.isAwarenessEnabled(context)) return
             val msg = when(intent.action) {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     when(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {

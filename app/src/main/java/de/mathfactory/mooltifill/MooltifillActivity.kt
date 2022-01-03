@@ -43,7 +43,7 @@ private sealed class CredentialResult(val credentials: Credentials?) {
 }
 
 interface RequestCallback {
-    suspend fun onConnected() {}
+    suspend fun onConnected(hasCommService: Boolean) {}
     suspend fun onRequestSent() {}
     suspend fun onLocked() {}
 }
@@ -62,7 +62,11 @@ class MooltifillActivity : Activity() {
             if(query.isBlank()) return CredentialResult.InvalidQuery
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
-            cb?.onConnected()
+            val hasCommService = device.hasCommService()
+            cb?.onConnected(hasCommService)
+            if(!hasCommService) {
+                return CredentialResult.CommFail
+            }
             if(device.isLocked() == true) {
                 cb?.onLocked()
                 do {
@@ -83,7 +87,9 @@ class MooltifillActivity : Activity() {
             if(service.isBlank()) return false
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return false // "Mooltipass device not accessible"
-            cb?.onConnected()
+            val hasCommService = device.hasCommService()
+            cb?.onConnected(hasCommService)
+            if(!hasCommService) return false
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials(service, login, null, null, pass))
             cb?.onRequestSent()
@@ -96,14 +102,18 @@ class MooltifillActivity : Activity() {
             return true
         }
 
-        suspend fun ping(context: Context): Boolean {
+        suspend fun ping(context: Context): Result<String> {
             val f = BleMessageFactory()
-            val device = AwarenessService.mooltipassDevice(context) ?: return false
+            val device = AwarenessService.mooltipassDevice(context) ?: return Result.failure(Exception("Device not found"))
+            if(!device.hasCommService()) return Result.failure(Exception("Device without communication service found, please update device"))
             device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
             val random = List(4) { Random.nextInt(0, 256) }
             val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
-            val answer = device.communicate(f, ping) ?: return false
-            return answer.cmd == MooltipassCommand.PING_BLE && ping.data contentEquals answer.data
+            val answer = device.communicate(f, ping) ?: return Result.failure(Exception("Communication error"))
+            if(answer.cmd != MooltipassCommand.PING_BLE || !(ping.data contentEquals answer.data)) {
+                return Result.failure(Exception("Ping response invalid"))
+            }
+            return Result.success("Successfully connected to device!")
         }
     }
 
@@ -120,8 +130,12 @@ class MooltifillActivity : Activity() {
                 findViewById<TextView>(R.id.txt_query)?.text = query
                 CoroutineScope(Dispatchers.IO).launch {
                     val reply = getCredentials(applicationContext, query, object :RequestCallback {
-                        override suspend fun onConnected() = withContext(Dispatchers.Main) {
-                            findViewById<TextView>(R.id.txt_status)?.text = "sending request..."
+                        override suspend fun onConnected(hasCommService: Boolean) = withContext(Dispatchers.Main) {
+                            findViewById<TextView>(R.id.txt_status)?.text = if(hasCommService) {
+                                "sending request..."
+                            } else {
+                                "No communication service found, please update device"
+                            }
                         }
                         override suspend fun onLocked() {
                             findViewById<TextView>(R.id.txt_status)?.text = "please unlock device to continue"
