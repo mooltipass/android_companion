@@ -346,7 +346,7 @@ class MooltipassScan {
 
     private fun pairedDevice(context: Context): BluetoothDevice? {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bondedDevices.firstOrNull(::filter)
+        return bluetoothManager.adapter.bondedDevices.lastOrNull(::filter)
     }
 
     fun deviceFlow(context: Context): Flow<BluetoothDevice> {
