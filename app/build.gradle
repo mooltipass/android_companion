@@ -25,7 +25,7 @@ android {
     flavorDimensions "version"
     productFlavors {
         stephanElectronics {
-            applicationId "ch.stephanelectronics.mooltifill"
+            applicationId "de.mathfactory.mooltifill"
             versionNameSuffix "-se"
         }
         mathfactory {
