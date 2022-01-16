@@ -59,12 +59,15 @@ private class MooltipassGatt(val gatt: BluetoothGatt) {
 }
 
 @ExperimentalCoroutinesApi
-class MooltipassDevice(private val device: BluetoothDevice, private var debug: Boolean) {
+class MooltipassDevice(private val device: BluetoothDevice, private var debug: Int) {
     private var mIsDisconnected: Boolean = false
     private var mLocked: Boolean? = null
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
 
     suspend fun hasCommService(): Boolean = mpGatt.await().service() != null
+
+    private fun isDebug() = debug > 0
+    private fun isVerboseDebug() = debug > 1
 
     private suspend fun waitBusy() {
         commFlow.first { !it.busy }
@@ -143,6 +146,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
             Log.e("Mooltifill", "First packet should have id 0, but was $id")
             return null
         }
+        // TODO check ids increment correctly
         return arrayOf(pkt) + (1 until nPkts).map { readNotified() ?: return null }.toTypedArray()
     }
 
@@ -178,8 +182,10 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-                    if(debug) {
-                        Log.d("Mooltifill", "onCharacteristicRead  $status " + characteristic?.value?.toHexString())
+                    if(isVerboseDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicRead $status " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicRead $status")
                     }
                     trySend(CommOp.Read(status, characteristic?.value))
                     bleCallback?.onCharacteristicRead(gatt, characteristic, status)
@@ -190,16 +196,20 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                     characteristic: BluetoothGattCharacteristic?,
                     status: Int
                 ) {
-                    if(debug) {
+                    if(isVerboseDebug()) {
                         Log.d("Mooltifill", "onCharacteristicWrite $status " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicWrite $status")
                     }
                     trySend(CommOp.Write(status))
                     bleCallback?.onCharacteristicWrite(gatt, characteristic, status)
                 }
 
                 override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-                    if(debug) {
+                    if(isVerboseDebug()) {
                         Log.d("Mooltifill", "onCharacteristicChanged " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicChanged")
                     }
                     trySend(CommOp.ChangedChar(characteristic?.value))
                     bleCallback?.onCharacteristicChanged(gatt, characteristic)
@@ -212,7 +222,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onConnectionStateChange $status $newState")
                     }
                     when (newState) {
@@ -245,7 +255,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                     descriptor: BluetoothGattDescriptor?,
                     status: Int
                 ) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onDescriptorWrite")
                     }
                     if (descriptor?.uuid.toString() == UUID_DESCRIPTOR_CCC) {
@@ -268,7 +278,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onServiceDiscover $status")
                     }
                     if(gatt != null && status == 0) {
@@ -294,14 +304,14 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
             mIsDisconnected = false
             val gatt = device.connectGatt(context, false, cb, BluetoothDevice.TRANSPORT_LE)
             awaitClose {
-                if(debug) {
+                if(isDebug()) {
                     Log.d("Mooltifill", "awaitClose")
                 }
                 mIsDisconnected = true
                 gatt.disconnect()
             }
         }.collect {
-            if(debug) {
+            if(isDebug()) {
                 Log.d("Mooltifill", "commFlow $it")
             }
             commFlow.emit(it)
@@ -309,14 +319,14 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
     }
 
     suspend fun disconnect() {
-        if(debug) {
+        if(isDebug()) {
             Log.d("Mooltifill", "disconnect()")
         }
         mpGatt.await().gatt.disconnect()
         mIsDisconnected = true
     }
 
-    fun setDebug(debug: Boolean) {
+    fun setDebug(debug: Int) {
         this.debug = debug
     }
 
@@ -333,7 +343,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 .firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
                 ?: return null
 
-            val dev = MooltipassDevice(device, SettingsActivity.isDebugEnabled(context))
+            val dev = MooltipassDevice(device, SettingsActivity.debugLevel(context))
             dev.connect(CoroutineScope(Dispatchers.IO), context, bleCallback)
             return dev
         }

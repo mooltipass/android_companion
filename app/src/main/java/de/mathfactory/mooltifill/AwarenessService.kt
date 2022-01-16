@@ -138,7 +138,7 @@ class AwarenessService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        fun setDebug(debug: Boolean) {
+        fun setDebug(debug: Int) {
             device?.setDebug(debug)
         }
     }
