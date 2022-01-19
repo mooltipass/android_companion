@@ -9,4 +9,16 @@
         <item>high</item>
         <item>low</item>
     </string-array>
+
+    <string-array name="debug_level_entries">
+        <item>Off</item>
+        <item>On</item>
+        <item>Verbose (WARNING: This will leak sensitive information!)</item>
+    </string-array>
+
+    <string-array name="debug_level_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 </resources>

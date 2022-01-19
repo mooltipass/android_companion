@@ -26,12 +26,13 @@
             app:defaultValue="high"
             app:enabled="false"
             app:useSimpleSummaryProvider="true" />
-        <SwitchPreference
-            app:key="debug"
+        <ListPreference
+            app:key="debug_level"
             app:title="Debug Output to logcat"
-            app:defaultValue="false"
-            app:summaryOn="WARNING: This may leak sensitive information!"
-            app:summaryOff="Debug mode disabled" />
+            app:entries="@array/debug_level_entries"
+            app:entryValues="@array/debug_level_values"
+            app:defaultValue="0"
+            app:useSimpleSummaryProvider="true" />
 
     </PreferenceCategory>
 </PreferenceScreen>
