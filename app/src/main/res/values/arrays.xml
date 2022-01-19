@@ -12,8 +12,8 @@
 
     <string-array name="debug_level_entries">
         <item>Off</item>
-        <item>Basic</item>
-        <item>Full (WARNING: This will leak sensitive information!)</item>
+        <item>On</item>
+        <item>Verbose (WARNING: This will leak sensitive information!)</item>
     </string-array>
 
     <string-array name="debug_level_values">
