@@ -82,9 +82,10 @@ class MooltifillService : AutofillService() {
         val response = FillResponse.Builder()
 
         val dataset = Dataset.Builder()
-        val presentation = remoteViews(packageName, "Mooltipass")
+        val query = info.query.take(31)
+        val presentation = remoteViews(packageName, "Mooltipass", query)
         val intent = Intent(applicationContext, MooltifillActivity::class.java)
-        intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query.take(31))
+        intent.putExtra(MooltifillActivity.EXTRA_QUERY, query)
         intent.putExtra(MooltifillActivity.EXTRA_USERNAME, username)
         intent.putExtra(MooltifillActivity.EXTRA_PASSWORD, password)
         val flags = if (Build.VERSION.SDK_INT >= 31) {
@@ -92,7 +93,8 @@ class MooltifillService : AutofillService() {
         } else {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
-        val pi = PendingIntent.getActivity(applicationContext, 0, intent, flags)
+        // reuse pending intent only if query is the same (through hashCode())
+        val pi = PendingIntent.getActivity(applicationContext, query.hashCode(), intent, flags)
         dataset.setAuthentication(pi.intentSender)
         dataset.setValue(username, null, presentation)
         response.addDataset(dataset.build())
@@ -268,9 +270,10 @@ class MooltifillService : AutofillService() {
         /**
          * Helper method to create a dataset presentation with the given text.
          */
-        internal fun remoteViews(packageName: String, remoteViewsText: String): RemoteViews {
+        internal fun remoteViews(packageName: String, remoteViewsText: String, remoteViewsText2: String): RemoteViews {
             val presentation = RemoteViews(packageName, R.layout.multidataset_service_list_item)
             presentation.setTextViewText(R.id.text, remoteViewsText)
+            presentation.setTextViewText(R.id.text2, remoteViewsText2)
             presentation.setImageViewResource(R.id.icon, R.mipmap.ic_launcher)
             return presentation
         }

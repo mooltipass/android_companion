@@ -40,6 +40,9 @@ private sealed class CredentialResult(val credentials: Credentials?) {
     object NoItem: CredentialResult(null)
     object ParseFail: CredentialResult(null)
     class Item(credentials: Credentials) : CredentialResult(credentials)
+
+    override fun toString(): String = javaClass.kotlin.simpleName ?: ""
+
 }
 
 interface RequestCallback {
@@ -153,7 +156,7 @@ class MooltifillActivity : Activity() {
                         else -> {
                             withContext(Dispatchers.Main) { Toast.makeText(applicationContext, "Error retrieving credentials", Toast.LENGTH_SHORT).show() }
                             if(SettingsActivity.isDebugEnabled(applicationContext)) {
-                                Log.d("Mooltifill", reply.toString())
+                                Log.d("Mooltifill", "Error retrieving credentials: $reply")
                             }
                             delay(2000)
                         }

@@ -36,6 +36,10 @@ sealed class CommOp(val status: Int, val busy: Boolean) {
     class Read(status: Int, val value: ByteArray?) : CommOp(status, false)
     class Write(status: Int) : CommOp(status, false)
     class ChangedChar(val value: ByteArray?) : CommOp(0, false)
+
+    override fun toString(): String {
+        return this.javaClass.kotlin.simpleName + ": status=" + status + " busy=" + busy
+    }
 }
 
 private const val DEVICE_NAME = "Mooltipass BLE"
@@ -59,38 +63,50 @@ private class MooltipassGatt(val gatt: BluetoothGatt) {
 }
 
 @ExperimentalCoroutinesApi
-class MooltipassDevice(private val device: BluetoothDevice, private var debug: Boolean) {
+class MooltipassDevice(private val device: BluetoothDevice, private var debug: Int) {
     private var mIsDisconnected: Boolean = false
     private var mLocked: Boolean? = null
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
 
     suspend fun hasCommService(): Boolean = mpGatt.await().service() != null
 
-    private suspend fun waitBusy() {
-        commFlow.first { !it.busy }
+    private fun isDebug() = debug > 0
+    private fun isVerboseDebug() = debug > 1
+
+    private suspend fun waitCommFlow(timeout: Long, label: String, block: suspend (CommOp) -> Boolean): CommOp? {
+        return withTimeoutOrNull(timeout) {
+            val id = (0..Int.MAX_VALUE).random()
+            if (isDebug()) Log.d("Mooltifill", Integer.toHexString(id) + " " + label)
+            return@withTimeoutOrNull commFlow.firstOrNull(block).also {
+                if (isDebug()) Log.d("Mooltifill", Integer.toHexString(id) + " " + label + " = " + it?.toString())
+            }
+        }
     }
+
+    private suspend fun waitBusy(timeout: Long) =
+        waitCommFlow(timeout, "waitBusy()") { !it.busy }
+
+
+    private suspend inline fun <reified T> awaitCommFlowType(timeout: Long): T? =
+        waitCommFlow(timeout, "awaitCommFlowType(" + T::class.simpleName + ")") { it is T } as T?
 
     suspend fun readNotified(): ByteArray? {
         if(mIsDisconnected) Log.e("Mooltifill", "readNotified() with mIsDisconnected == true")
-        return withTimeoutOrNull(READ_TIMEOUT) {
-            val r = (commFlow.firstOrNull { it is CommOp.ChangedChar } as CommOp.ChangedChar).value
-            commFlow.value = CommOp.Idle()
-            r
-        }
+        val r = awaitCommFlowType<CommOp.ChangedChar>(READ_TIMEOUT)?.value ?: return null
+        commFlow.value = CommOp.Idle()
+        return r
     }
 
     suspend fun readGatt(): ByteArray? {
         if(mIsDisconnected) Log.e("Mooltifill", "readGatt() with mIsDisconnected == true")
-        waitBusy()
+        waitBusy(READ_TIMEOUT)
         val mp = mpGatt.await()
         mp.readCharacteristic()?.let { c ->
             mp.gatt.readCharacteristic(c)
         } ?: return null
         commFlow.value = CommOp.ReadRequested(0)
 
-        return withTimeoutOrNull(READ_TIMEOUT) {
-            (commFlow.firstOrNull { it is CommOp.Read } as CommOp.Read).value
-        }
+        return awaitCommFlowType<CommOp.Read>(READ_TIMEOUT)?.value
     }
 
     suspend fun flushRead(): ByteArray? {
@@ -115,7 +131,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
 
     suspend fun send(pkt: ByteArray): Int? {
         if(mIsDisconnected) Log.e("Mooltifill", "send() with mIsDisconnected == true")
-        waitBusy()
+        waitBusy(WRITE_TIMEOUT)
         val mp = mpGatt.await()
         mp.writeCharacteristic()?.let { c ->
             c.value = pkt
@@ -123,16 +139,11 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
         } ?: return null
 
         commFlow.value = CommOp.WriteRequested(0)
-        return withTimeoutOrNull(WRITE_TIMEOUT) {
-            (commFlow.first { it is CommOp.Write } as CommOp.Write).status
-        }
+        return awaitCommFlowType<CommOp.Write>(WRITE_TIMEOUT)?.status
     }
 
-    suspend fun waitForChange(): CommOp.ChangedChar? {
-        return withTimeoutOrNull(READ_TIMEOUT) {
-            commFlow.firstOrNull { it is CommOp.ChangedChar } as CommOp.ChangedChar
-        }
-    }
+    suspend fun waitForChange(): CommOp.ChangedChar? =
+        awaitCommFlowType<CommOp.ChangedChar>(READ_TIMEOUT)
 
     suspend fun readMessage(): Array<ByteArray>? {
         if(mIsDisconnected) Log.e("Mooltifill", "readMessage() with mIsDisconnected == true")
@@ -143,6 +154,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
             Log.e("Mooltifill", "First packet should have id 0, but was $id")
             return null
         }
+        // TODO check ids increment correctly
         return arrayOf(pkt) + (1 until nPkts).map { readNotified() ?: return null }.toTypedArray()
     }
 
@@ -178,8 +190,10 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-                    if(debug) {
-                        Log.d("Mooltifill", "onCharacteristicRead  $status " + characteristic?.value?.toHexString())
+                    if(isVerboseDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicRead $status " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicRead $status")
                     }
                     trySend(CommOp.Read(status, characteristic?.value))
                     bleCallback?.onCharacteristicRead(gatt, characteristic, status)
@@ -190,16 +204,20 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                     characteristic: BluetoothGattCharacteristic?,
                     status: Int
                 ) {
-                    if(debug) {
+                    if(isVerboseDebug()) {
                         Log.d("Mooltifill", "onCharacteristicWrite $status " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicWrite $status")
                     }
                     trySend(CommOp.Write(status))
                     bleCallback?.onCharacteristicWrite(gatt, characteristic, status)
                 }
 
                 override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
-                    if(debug) {
+                    if(isVerboseDebug()) {
                         Log.d("Mooltifill", "onCharacteristicChanged " + characteristic?.value?.toHexString())
+                    } else if(isDebug()) {
+                        Log.d("Mooltifill", "onCharacteristicChanged")
                     }
                     trySend(CommOp.ChangedChar(characteristic?.value))
                     bleCallback?.onCharacteristicChanged(gatt, characteristic)
@@ -212,7 +230,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onConnectionStateChange $status $newState")
                     }
                     when (newState) {
@@ -245,7 +263,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                     descriptor: BluetoothGattDescriptor?,
                     status: Int
                 ) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onDescriptorWrite")
                     }
                     if (descriptor?.uuid.toString() == UUID_DESCRIPTOR_CCC) {
@@ -268,7 +286,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 }
 
                 override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-                    if(debug) {
+                    if(isDebug()) {
                         Log.d("Mooltifill", "onServiceDiscover $status")
                     }
                     if(gatt != null && status == 0) {
@@ -294,14 +312,14 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
             mIsDisconnected = false
             val gatt = device.connectGatt(context, false, cb, BluetoothDevice.TRANSPORT_LE)
             awaitClose {
-                if(debug) {
+                if(isDebug()) {
                     Log.d("Mooltifill", "awaitClose")
                 }
                 mIsDisconnected = true
                 gatt.disconnect()
             }
         }.collect {
-            if(debug) {
+            if(isDebug()) {
                 Log.d("Mooltifill", "commFlow $it")
             }
             commFlow.emit(it)
@@ -309,14 +327,14 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
     }
 
     suspend fun disconnect() {
-        if(debug) {
+        if(isDebug()) {
             Log.d("Mooltifill", "disconnect()")
         }
         mpGatt.await().gatt.disconnect()
         mIsDisconnected = true
     }
 
-    fun setDebug(debug: Boolean) {
+    fun setDebug(debug: Int) {
         this.debug = debug
     }
 
@@ -333,7 +351,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: B
                 .firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
                 ?: return null
 
-            val dev = MooltipassDevice(device, SettingsActivity.isDebugEnabled(context))
+            val dev = MooltipassDevice(device, SettingsActivity.debugLevel(context))
             dev.connect(CoroutineScope(Dispatchers.IO), context, bleCallback)
             return dev
         }

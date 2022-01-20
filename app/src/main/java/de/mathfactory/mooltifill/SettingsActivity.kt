@@ -34,20 +34,31 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.preference.Preference
-import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceManager
-import androidx.preference.SwitchPreference
+import androidx.preference.*
 import kotlinx.coroutines.*
 
 class SettingsActivity : AppCompatActivity() {
 
     companion object {
-        fun isDebugEnabled(context: Context): Boolean = setting(context, "debug", false)
-        fun isAwarenessEnabled(context: Context): Boolean = setting(context, "awareness", true)
+        fun debugLevel(context: Context): Int = parsedIntSetting(context, "debug_level", 0)
+        fun isDebugEnabled(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 0
+        fun isDebugVerbose(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 1
+        fun isAwarenessEnabled(context: Context): Boolean = booleanSetting(context, "awareness", true)
 
-        private fun setting(context: Context, key: String, default: Boolean) =
-            PreferenceManager.getDefaultSharedPreferences(context).getBoolean(key, default)
+        private fun <T> castChecked(block: () -> T): T? =
+            try { block() } catch(e: ClassCastException) { null }
+
+        private fun booleanSetting(context: Context, key: String, default: Boolean) =
+            castChecked { PreferenceManager.getDefaultSharedPreferences(context).getBoolean(key, default) } ?: default
+
+        private fun intSetting(context: Context, key: String, default: Int) =
+            castChecked { PreferenceManager.getDefaultSharedPreferences(context).getInt(key, default) } ?: default
+
+        private fun stringSetting(context: Context, key: String, default: String?) =
+            castChecked { PreferenceManager.getDefaultSharedPreferences(context).getString(key, default) } ?: default
+
+        private fun parsedIntSetting(context: Context, key: String, default: Int) =
+            stringSetting(context, key, null)?.toIntOrNull() ?: default
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -148,8 +159,10 @@ class SettingsActivity : AppCompatActivity() {
                     true
                 }
             }
-            findPreference<SwitchPreference>("debug")?.setOnPreferenceChangeListener { _, newValue ->
-                AwarenessService.setDebug(newValue == true)
+            findPreference<ListPreference>("debug_level")?.setOnPreferenceChangeListener { _, newValue ->
+                if(newValue is String) {
+                    newValue.toIntOrNull()?.let(AwarenessService::setDebug)
+                }
                 true
             }
             findPreference<SwitchPreference>("awareness")?.setOnPreferenceChangeListener { _, newValue ->
