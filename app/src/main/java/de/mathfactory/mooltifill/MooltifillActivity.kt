@@ -140,7 +140,7 @@ class MooltifillActivity : Activity() {
                                 "No communication service found, please update device"
                             }
                         }
-                        override suspend fun onLocked() {
+                        override suspend fun onLocked() = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = "please unlock device to continue"
                         }
                         override suspend fun onRequestSent() = withContext(Dispatchers.Main) {
