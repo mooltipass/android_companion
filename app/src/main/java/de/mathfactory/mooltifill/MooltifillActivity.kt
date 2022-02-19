@@ -31,6 +31,9 @@ import android.view.autofill.AutofillValue
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlin.random.Random
 
 private sealed class CredentialResult(val credentials: Credentials?) {
@@ -46,6 +49,7 @@ private sealed class CredentialResult(val credentials: Credentials?) {
 }
 
 interface RequestCallback {
+    suspend fun onQueryChanged(original: String, substituted: String) {}
     suspend fun onConnected(hasCommService: Boolean) {}
     suspend fun onRequestSent() {}
     suspend fun onLocked() {}
@@ -57,9 +61,18 @@ class MooltifillActivity : Activity() {
     @FlowPreview
     companion object {
         const val EXTRA_QUERY = "extra_query"
+        const val EXTRA_IS_WEB_REQUEST = "extra_is_web_rq"
         const val EXTRA_USERNAME = "extra_username"
         const val EXTRA_PASSWORD = "extra_password"
         const val EXTRA_SAVE = "extra_save"
+
+        private suspend fun getCredentialsWithSubstitution(context: Context, query: String, substitution: SubstitutionPolicy, cb: RequestCallback? = null): CredentialResult
+            = substitution.policies(query).asFlow()
+                .map {
+                    cb?.onQueryChanged(query, it)
+                    getCredentials(context, it, cb)
+                }.firstOrNull { it != CredentialResult.NoItem }
+                ?: CredentialResult.NoItem
 
         private suspend fun getCredentials(context: Context, query: String, cb: RequestCallback? = null): CredentialResult {
             if(query.isBlank()) return CredentialResult.InvalidQuery
@@ -126,13 +139,19 @@ class MooltifillActivity : Activity() {
         this.setFinishOnTouchOutside(false)
         findViewById<TextView>(R.id.btn_cancel)?.setOnClickListener { setResult(RESULT_CANCELED);finish() }
         intent?.getStringExtra(EXTRA_QUERY)?.let { query ->
+            val isWebRq = intent?.getBooleanExtra(EXTRA_IS_WEB_REQUEST, false) ?: false
             val save = intent?.getBooleanExtra(EXTRA_SAVE, false) ?: false
             if (save) {
                 // save is handled by MooltifillService
             } else /* query */ {
                 findViewById<TextView>(R.id.txt_query)?.text = query
                 CoroutineScope(Dispatchers.IO).launch {
-                    val reply = getCredentials(applicationContext, query, object :RequestCallback {
+                    val substitution = if(isWebRq) { SettingsActivity.getUrlSubstitutionPolicy(this@MooltifillActivity) }
+                    else { SettingsActivity.getPackageSubstitutionPolicy(this@MooltifillActivity) }
+                    val reply = getCredentialsWithSubstitution(applicationContext, query, substitution, object :RequestCallback {
+                        override suspend fun onQueryChanged(original: String, substituted: String) = withContext(Dispatchers.Main) {
+                            findViewById<TextView>(R.id.txt_query)?.text = substituted
+                        }
                         override suspend fun onConnected(hasCommService: Boolean) = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = if(hasCommService) {
                                 "sending request..."

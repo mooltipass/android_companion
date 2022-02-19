@@ -35,7 +35,7 @@ import androidx.collection.ArrayMap
 import kotlinx.coroutines.*
 import java.util.*
 
-private class AutofillInfo(val query: String, private val autofillIds: Map<String, Pair<AutofillId, AutofillValue?>>) {
+private class AutofillInfo(val query: String, private val autofillIds: Map<String, Pair<AutofillId, AutofillValue?>>, val isWebRequest: Boolean) {
     public fun username() = autofillIds[View.AUTOFILL_HINT_USERNAME] ?: autofillIds[View.AUTOFILL_HINT_EMAIL_ADDRESS]
     public fun password() = autofillIds[View.AUTOFILL_HINT_PASSWORD]
 
@@ -58,8 +58,9 @@ class MooltifillService : AutofillService() {
         val packageName = applicationContext.packageName // this package
         val clientPackage = structure.activityComponent.packageName // app package
 
-        val query = if(webDomain.isEmpty()) {clientPackage} else {webDomain.toString()}
-        return AutofillInfo(query, autofillIds)
+        val isWebDomain = webDomain.isNotEmpty()
+        val query = if(isWebDomain) {webDomain.toString()} else {clientPackage}
+        return AutofillInfo(query, autofillIds, isWebDomain)
     }
 
     override fun onFillRequest(request: FillRequest, cancellationSignal: CancellationSignal, callback: FillCallback) {
@@ -86,6 +87,7 @@ class MooltifillService : AutofillService() {
         val presentation = remoteViews(packageName, "Mooltipass", query)
         val intent = Intent(applicationContext, MooltifillActivity::class.java)
         intent.putExtra(MooltifillActivity.EXTRA_QUERY, query)
+        intent.putExtra(MooltifillActivity.EXTRA_IS_WEB_REQUEST, info.isWebRequest)
         intent.putExtra(MooltifillActivity.EXTRA_USERNAME, username)
         intent.putExtra(MooltifillActivity.EXTRA_PASSWORD, password)
         val flags = if (Build.VERSION.SDK_INT >= 31) {
