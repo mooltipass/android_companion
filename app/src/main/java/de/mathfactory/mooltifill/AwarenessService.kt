@@ -43,11 +43,21 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
             CoroutineScope(Dispatchers.IO).launch {
                 val device = AwarenessService.mooltipassDevice(context)
                 val f = BleMessageFactory()
-                device?.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
-                // send status request
-                device?.send(f.serialize(MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)))
+                if(SettingsActivity.isDebugEnabled(context)) Log.d("Mooltifill", "reading lock status")
+                val fpr = device?.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+                if(fpr != 0) {
+                    Log.e("Mooltifill", "onConnectionStateChange(): FLIP_BIT_RESET_PACKET failed: $fpr")
+                } else {
+                    // send status request
+                    device.send(f.serialize(MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)))
+                }
             }
         }
+//        if(newState == BluetoothProfile.STATE_DISCONNECTED) {
+//            CoroutineScope(Dispatchers.IO).launch {
+//                AwarenessService.disconnect()
+//            }
+//        }
         sendNotification()
     }
 
@@ -141,6 +151,10 @@ class AwarenessService : Service() {
         fun setDebug(debug: Int) {
             device?.setDebug(debug)
         }
+
+//        suspend fun disconnect() {
+//            device?.disconnect()
+//        }
     }
 
     override fun onBind(intent: Intent): IBinder? = null
