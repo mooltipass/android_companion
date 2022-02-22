@@ -42,11 +42,13 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
             // send query for lock status
             CoroutineScope(Dispatchers.IO).launch {
                 val device = AwarenessService.mooltipassDevice(context)
-                val f = BleMessageFactory()
-                device?.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
-                // send status request
-                device?.send(f.serialize(MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)))
+                if(SettingsActivity.isDebugEnabled(context)) Log.d("Mooltifill", "reading lock status")
+                // query will be parsed in AwarenessCallback::onCharacteristicChanged()
+                device?.communicate(BleMessageFactory(), MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE))
             }
+        }
+        if(newState == BluetoothProfile.STATE_DISCONNECTED) {
+            AwarenessService.close()
         }
         sendNotification()
     }
@@ -105,9 +107,9 @@ class AwarenessService : Service() {
             }
         }
 
-        suspend fun mooltipassDevice(context: Context): MooltipassDevice? {
+        suspend fun mooltipassDevice(context: Context, debug: Int = SettingsActivity.debugLevel(context)): MooltipassDevice? {
             if(device == null || device?.isDisconnected() != false) {
-                device = MooltipassDevice.connect(context, AwarenessCallback(context))
+                device = MooltipassDevice.connect(context, debug, AwarenessCallback(context))
             }
             return device
         }
@@ -141,6 +143,15 @@ class AwarenessService : Service() {
         fun setDebug(debug: Int) {
             device?.setDebug(debug)
         }
+
+        fun close() {
+            device?.let {
+                CoroutineScope(Dispatchers.IO).launch {
+                    it.close()
+                }
+            }
+            device = null
+        }
     }
 
     override fun onBind(intent: Intent): IBinder? = null
@@ -151,8 +162,7 @@ class AwarenessService : Service() {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     when(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
                         BluetoothAdapter.STATE_OFF -> {
-                            CoroutineScope(Dispatchers.IO).launch { device?.disconnect() }
-                            device = null
+                            close()
                             "Bluetooth Off"
                         }
                         BluetoothAdapter.STATE_ON -> "Disconnected"

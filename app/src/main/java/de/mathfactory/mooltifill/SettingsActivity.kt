@@ -37,6 +37,40 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.*
 import kotlinx.coroutines.*
 
+enum class UrlSubstitutionPolicies : SubstitutionPolicy {
+    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww;
+
+    override fun policies(query: String): List<String> {
+        return when(this) {
+            Nochange -> listOf(query)
+            PreferWww -> listOf(withWww(query), withoutWww(query))
+            PreferNowww -> listOf(withoutWww(query), withWww(query))
+            AddWww -> listOf(withWww(query))
+            RemoveWww -> listOf(withoutWww(query))
+        }
+    }
+
+    private fun withWww(query: String): String {
+        if(query.startsWith("www.")) return query
+        return "www.$query";
+    }
+
+    private fun withoutWww(query: String): String {
+        if(query.startsWith("www.")) return query.substring(4)
+        return query
+    }
+}
+
+enum class PkgSubstitutionPolicies : SubstitutionPolicy {
+    Nochange;
+
+    override fun policies(query: String): List<String> {
+        return when(this) {
+            Nochange -> listOf(query)
+        }
+    }
+}
+
 class SettingsActivity : AppCompatActivity() {
 
     companion object {
@@ -44,6 +78,12 @@ class SettingsActivity : AppCompatActivity() {
         fun isDebugEnabled(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 0
         fun isDebugVerbose(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 1
         fun isAwarenessEnabled(context: Context): Boolean = booleanSetting(context, "awareness", true)
+        fun getUrlSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "www_substitution", null)
+            ?.let { UrlSubstitutionPolicies.valueOf(it) }
+            ?: UrlSubstitutionPolicies.Nochange
+        fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "pkg_substitution", null)
+            ?.let { PkgSubstitutionPolicies.valueOf(it) }
+            ?: PkgSubstitutionPolicies.Nochange
 
         private fun <T> castChecked(block: () -> T): T? =
             try { block() } catch(e: ClassCastException) { null }

@@ -34,6 +34,7 @@ private const val MP_PACKET_DATA_PAYLOAD = HID_PACKET_DATA_PAYLOAD - PACKET_DATA
 class BleMessageFactory(private val log: Boolean = true) : MessageFactory {
 
     var flip = false
+    var initial = true
 
     override fun deserialize(data: Array<ByteArray>): MooltipassMessage? {
         val nPkts = (data[0][1].toUByte().toInt() % 16) + 1
@@ -81,6 +82,8 @@ class BleMessageFactory(private val log: Boolean = true) : MessageFactory {
     }
 
     override fun serialize(msg: MooltipassMessage): Array<ByteArray> {
+        val preamble = if(initial) arrayOf(MooltipassPayload.FLIP_BIT_RESET_PACKET) else emptyArray()
+        initial = false
         val len = msg.data?.size ?: 0
         // TODO: ack
         val ack = 0x00
@@ -92,7 +95,7 @@ class BleMessageFactory(private val log: Boolean = true) : MessageFactory {
         msg.data?.copyInto(hidPayload, PACKET_DATA_OFFSET)
         val chunks = chunks(hidPayload, HID_PACKET_DATA_PAYLOAD)
         val nPkts = chunks.size
-        return chunks.mapIndexed() { id, chunk ->
+        return preamble + chunks.mapIndexed { id, chunk ->
             val bytes = ByteArray(HID_PACKET_SIZE)
             bytes[0] = (flipbit + ack + chunk.size).toByte()
             bytes[1] = ((id shl 4) + (nPkts - 1)).toByte()
