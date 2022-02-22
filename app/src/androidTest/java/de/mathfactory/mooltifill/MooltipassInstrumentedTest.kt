@@ -25,15 +25,14 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.PermissionChecker
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.firstOrNull
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import kotlin.random.Random
 
 
@@ -42,12 +41,22 @@ import kotlin.random.Random
  *
  * See [testing documentation](http://d.android.com/tools/testing).
  */
-@RunWith(AndroidJUnit4::class)
-class MooltifillInstrumentedTest {
-    @get:org.junit.Rule
-    var bluetoothPermissionRule: GrantPermissionRule = GrantPermissionRule.grant(
-        android.Manifest.permission.ACCESS_FINE_LOCATION,
-        android.Manifest.permission.ACCESS_COARSE_LOCATION)
+@RunWith(Parameterized::class)
+class MooltifillInstrumentedTest(private val useAwarenessService: Boolean) {
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters
+        fun data() = listOf(
+            arrayOf(true),
+            arrayOf(false),
+        )
+
+    }
+
+//    @get:org.junit.Rule
+//    var bluetoothPermissionRule: GrantPermissionRule = GrantPermissionRule.grant(
+//        android.Manifest.permission.ACCESS_FINE_LOCATION,
+//        android.Manifest.permission.ACCESS_COARSE_LOCATION)
 
 
 //    @Before
@@ -65,11 +74,11 @@ class MooltifillInstrumentedTest {
     fun before() {
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         for (p in listOf(
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION,
+            //Manifest.permission.ACCESS_COARSE_LOCATION,
+            //Manifest.permission.ACCESS_FINE_LOCATION,
             //Manifest.permission.BLUETOOTH_SCAN,
             //Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_ADMIN,
+            //Manifest.permission.BLUETOOTH_ADMIN,
             Manifest.permission.BLUETOOTH,
 
             )) {
@@ -81,9 +90,20 @@ class MooltifillInstrumentedTest {
         }
 
         val bluetoothManager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        assert(bluetoothManager.adapter.isEnabled)
+    }
 
-        if(!bluetoothManager.adapter.isEnabled) {
-            bluetoothManager.adapter.enable()
+    private suspend fun connect(): MooltipassDevice {
+        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        return if(useAwarenessService) {
+            val device = AwarenessService.mooltipassDevice(appContext, 2)
+            assertNotNull(device)
+            device!!
+        } else {
+            val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
+            assertNotNull("Expected to find ble device", device)
+            assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
+            MooltipassDevice(device!!, 2).also { it.connect(CoroutineScope(Dispatchers.IO), appContext) }
         }
     }
 
@@ -91,60 +111,61 @@ class MooltifillInstrumentedTest {
     @ExperimentalCoroutinesApi
     @InternalCoroutinesApi
     @Test
-    fun testDeviceAccess() {
-        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+    fun testDeviceAccess() = runBlocking {
+        val dev = connect()
         val f = BleMessageFactory()
-        runBlocking {
-            val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
-            assertNotNull("Expected to find ble device", device)
-            assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
-            val dev = MooltipassDevice(device!!, 2)
-            dev.connect(CoroutineScope(Dispatchers.IO), appContext)
-            assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
-            val random = List(4) { Random.nextInt(0, 256) }
-            val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
-            val answer = dev.communicate(f.serialize(ping))?.let(f::deserialize)
-            assertEquals(MooltipassCommand.PING_BLE, answer?.cmd)
-            //val sameAnswer = dev.readMessage()?.let(f::deserialize)
-            //assertEquals(sameAnswer?.cmd, answer?.cmd)
-            //assertArrayEquals(sameAnswer?.data, answer?.data)
-            assertArrayEquals(ping.data, answer?.data)
-            val pw = ByteArray(32) {Random.nextInt(0, 256).toByte()}.toHexString()
-            val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials("test", "login", null, null, pw))
-            val credAnswer = dev.communicate(f.serialize(cred))?.let(f::deserialize)
-            assertEquals(MooltipassCommand.STORE_CREDENTIAL_BLE, credAnswer?.cmd)
-            assertArrayEquals(ByteArray(1) { 1 }, credAnswer?.data)
+        //assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
+        val random = List(4) { Random.nextInt(0, 256) }
+        val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
+        val answer = dev.communicate(f, ping)
+        assertEquals(MooltipassCommand.PING_BLE, answer?.cmd)
+        assertArrayEquals(ping.data, answer?.data)
 
-            val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials("test", "login"))
-            val credGetAnswer = dev.communicate(f.serialize(credGet))?.let(f::deserialize)
-            assertEquals(MooltipassCommand.GET_CREDENTIAL_BLE, credGetAnswer?.cmd)
-            assertEquals(pw, credGetAnswer?.data?.let { MooltipassPayload.answerGetCredentials("test", it)?.password})
-
-            dev.disconnect()
-        }
+        dev.close()
     }
 
     @FlowPreview
     @ExperimentalCoroutinesApi
     @InternalCoroutinesApi
-    fun testCredentials() {
-        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        var f = BleMessageFactory()
-        runBlocking {
-            val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
-            assertNotNull("Expected to find ble device", device)
-            assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
-            val dev = MooltipassDevice(device!!, 2)
-            assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
 
-            dev.disconnect()
-        }
+    @Test
+    fun testCredentials() = runBlocking {
+        val dev = connect()
+        val f = BleMessageFactory()
+        //assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
+        val pw = ByteArray(32) {Random.nextInt(0, 256).toByte()}.toHexString()
+        val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials("test", "login", null, null, pw))
+        val credAnswer = dev.communicate(f, cred)
+        assertEquals(MooltipassCommand.STORE_CREDENTIAL_BLE, credAnswer?.cmd)
+        assertArrayEquals(ByteArray(1) { 1 }, credAnswer?.data)
+
+        val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials("test", "login"))
+        val credGetAnswer = dev.communicate(f, credGet)
+        assertEquals(MooltipassCommand.GET_CREDENTIAL_BLE, credGetAnswer?.cmd)
+        assertEquals(pw, credGetAnswer?.data?.let { MooltipassPayload.answerGetCredentials("test", it)?.password})
+        dev.close()
     }
 
-    fun ByteArray.toHexString() : String {
-        return this.joinToString("") {
-            java.lang.String.format("%02x", it)
-        }
+    @FlowPreview
+    @ExperimentalCoroutinesApi
+    @InternalCoroutinesApi
+    @Test
+    fun testParallel() = runBlocking {
+        val dev = connect()
+        (0 until 5).map {
+            launch {
+                val f = BleMessageFactory()
+                //assertEquals(0, dev.send(MooltipassPayload.FLIP_BIT_RESET_PACKET))
+                val req = MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE)
+                val answer = dev.communicate(f, req)
+                assertEquals(MooltipassCommand.MOOLTIPASS_STATUS_BLE, answer?.cmd)
+            }
+        }.joinAll()
+        dev.close()
+    }
+
+    fun ByteArray.toHexString() : String = this.joinToString("") {
+        java.lang.String.format("%02x", it)
     }
 
 }
