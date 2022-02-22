@@ -21,4 +21,18 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="www_substitution_entries">
+        <item>Do not change subdomain part</item>
+        <item>Try with www. subdomain first, then without</item>
+        <item>Try without www. subdomain first, then with</item>
+        <item>Always add www. subdomain</item>
+        <item>Always remove www. subdomain</item>
+    </string-array>
+    <string-array name="www_substitution_values">
+        <item>Nochange</item>
+        <item>PreferWww</item>
+        <item>PreferNowww</item>
+        <item>AddWww</item>
+        <item>RemoveWww</item>
+    </string-array>
 </resources>

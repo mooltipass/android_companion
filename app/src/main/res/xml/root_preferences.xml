@@ -35,4 +35,13 @@
             app:useSimpleSummaryProvider="true" />
 
     </PreferenceCategory>
+    <PreferenceCategory app:title="Service Mapping">
+        <ListPreference
+            app:key="www_substitution"
+            app:title="Substitution of www. subdomain part from browser urls"
+            app:entries="@array/www_substitution_entries"
+            app:entryValues="@array/www_substitution_values"
+            app:defaultValue="Nochange"
+            app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
 </PreferenceScreen>

@@ -31,21 +31,28 @@ import android.view.autofill.AutofillValue
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlin.random.Random
 
 private sealed class CredentialResult(val credentials: Credentials?) {
     object InvalidQuery: CredentialResult(null)
     object DeviceNotFound: CredentialResult(null)
-    object CommFail: CredentialResult(null)
+    class CommFail(val reason: String): CredentialResult(null)
     object NoItem: CredentialResult(null)
     object ParseFail: CredentialResult(null)
     class Item(credentials: Credentials) : CredentialResult(credentials)
 
-    override fun toString(): String = javaClass.kotlin.simpleName ?: ""
+    override fun toString(): String = when(this) {
+        is CommFail -> "CommFail: $reason"
+        else -> javaClass.kotlin.simpleName ?: ""
+    }
 
 }
 
 interface RequestCallback {
+    suspend fun onQueryChanged(original: String, substituted: String) {}
     suspend fun onConnected(hasCommService: Boolean) {}
     suspend fun onRequestSent() {}
     suspend fun onLocked() {}
@@ -57,18 +64,28 @@ class MooltifillActivity : Activity() {
     @FlowPreview
     companion object {
         const val EXTRA_QUERY = "extra_query"
+        const val EXTRA_IS_WEB_REQUEST = "extra_is_web_rq"
         const val EXTRA_USERNAME = "extra_username"
         const val EXTRA_PASSWORD = "extra_password"
         const val EXTRA_SAVE = "extra_save"
 
+        private suspend fun getCredentialsWithSubstitution(context: Context, query: String, substitution: SubstitutionPolicy, cb: RequestCallback? = null): CredentialResult
+            = substitution.policies(query).asFlow()
+                .map {
+                    cb?.onQueryChanged(query, it)
+                    getCredentials(context, it, cb)
+                }.firstOrNull { it != CredentialResult.NoItem }
+                ?: CredentialResult.NoItem
+
         private suspend fun getCredentials(context: Context, query: String, cb: RequestCallback? = null): CredentialResult {
+            if(SettingsActivity.isDebugVerbose(context)) Log.d("Mooltifill", "getCredentials(): $query")
             if(query.isBlank()) return CredentialResult.InvalidQuery
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
             val hasCommService = device.hasCommService()
             cb?.onConnected(hasCommService)
             if(!hasCommService) {
-                return CredentialResult.CommFail
+                return CredentialResult.CommFail("hasCommService() == false")
             }
             if(device.isLocked() == true) {
                 cb?.onLocked()
@@ -76,24 +93,27 @@ class MooltifillActivity : Activity() {
                     delay(1000)
                 } while (device.isLocked() == true)
             }
-            device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+            val fbr = device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+            if(fbr != 0) return CredentialResult.CommFail("FLIP_BIT_RESET failed: $fbr")
             val credGet = MooltipassMessage(MooltipassCommand.GET_CREDENTIAL_BLE, MooltipassPayload.getCredentials(query, null))
             cb?.onRequestSent()
             val credGetAnswer = device.communicate(f, credGet)
-            if(MooltipassCommand.GET_CREDENTIAL_BLE != credGetAnswer?.cmd) return CredentialResult.CommFail  // "Reading failed"
+            if(MooltipassCommand.GET_CREDENTIAL_BLE != credGetAnswer?.cmd) return CredentialResult.CommFail("Reading credentials failed")
             if(credGetAnswer.data?.isEmpty() != false) return CredentialResult.NoItem // "No item found"
             return MooltipassPayload.answerGetCredentials(query, credGetAnswer.data)?.let { CredentialResult.Item(it) }
                 ?: CredentialResult.ParseFail
         }
 
         suspend fun setCredentials(context: Context, service: String, login: String, pass: String, cb: RequestCallback? = null): Boolean {
+            if(SettingsActivity.isDebugVerbose(context)) Log.d("Mooltifill", "setCredentials: $service $login $pass")
             if(service.isBlank()) return false
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return false // "Mooltipass device not accessible"
             val hasCommService = device.hasCommService()
             cb?.onConnected(hasCommService)
             if(!hasCommService) return false
-            device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+
+            if(device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET) != 0) return false // "FLIP_BIT_RESET failed"
             val cred = MooltipassMessage(MooltipassCommand.STORE_CREDENTIAL_BLE, MooltipassPayload.storeCredentials(service, login, null, null, pass))
             cb?.onRequestSent()
             val credAnswer = device.communicate(f, cred)
@@ -109,7 +129,9 @@ class MooltifillActivity : Activity() {
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return Result.failure(Exception("Device not found"))
             if(!device.hasCommService()) return Result.failure(Exception("Device without communication service found, please update device"))
-            device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+
+            val fbr = device.send(MooltipassPayload.FLIP_BIT_RESET_PACKET)
+            if(fbr != 0) return Result.failure(Exception("FLIP_BIT_RESET failed: $fbr"))
             val random = List(4) { Random.nextInt(0, 256) }
             val ping = MooltipassMessage(MooltipassCommand.PING_BLE, random)
             val answer = device.communicate(f, ping) ?: return Result.failure(Exception("Communication error"))
@@ -126,13 +148,19 @@ class MooltifillActivity : Activity() {
         this.setFinishOnTouchOutside(false)
         findViewById<TextView>(R.id.btn_cancel)?.setOnClickListener { setResult(RESULT_CANCELED);finish() }
         intent?.getStringExtra(EXTRA_QUERY)?.let { query ->
+            val isWebRq = intent?.getBooleanExtra(EXTRA_IS_WEB_REQUEST, false) ?: false
             val save = intent?.getBooleanExtra(EXTRA_SAVE, false) ?: false
             if (save) {
                 // save is handled by MooltifillService
             } else /* query */ {
                 findViewById<TextView>(R.id.txt_query)?.text = query
                 CoroutineScope(Dispatchers.IO).launch {
-                    val reply = getCredentials(applicationContext, query, object :RequestCallback {
+                    val substitution = if(isWebRq) { SettingsActivity.getUrlSubstitutionPolicy(this@MooltifillActivity) }
+                    else { SettingsActivity.getPackageSubstitutionPolicy(this@MooltifillActivity) }
+                    val reply = getCredentialsWithSubstitution(applicationContext, query, substitution, object :RequestCallback {
+                        override suspend fun onQueryChanged(original: String, substituted: String) = withContext(Dispatchers.Main) {
+                            findViewById<TextView>(R.id.txt_query)?.text = substituted
+                        }
                         override suspend fun onConnected(hasCommService: Boolean) = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = if(hasCommService) {
                                 "sending request..."
@@ -140,7 +168,7 @@ class MooltifillActivity : Activity() {
                                 "No communication service found, please update device"
                             }
                         }
-                        override suspend fun onLocked() {
+                        override suspend fun onLocked() = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_status)?.text = "please unlock device to continue"
                         }
                         override suspend fun onRequestSent() = withContext(Dispatchers.Main) {
