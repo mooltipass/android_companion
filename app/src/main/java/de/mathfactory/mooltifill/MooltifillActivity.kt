@@ -155,8 +155,7 @@ class MooltifillActivity : Activity() {
             } else /* query */ {
                 findViewById<TextView>(R.id.txt_query)?.text = query
                 CoroutineScope(Dispatchers.IO).launch {
-                    val substitution = if(isWebRq) { SettingsActivity.getUrlSubstitutionPolicy(this@MooltifillActivity) }
-                    else { SettingsActivity.getPackageSubstitutionPolicy(this@MooltifillActivity) }
+                    val substitution = SettingsActivity.getSubstitutionPolicy(this@MooltifillActivity, isWebRq)
                     val reply = getCredentialsWithSubstitution(applicationContext, query, substitution, object :RequestCallback {
                         override suspend fun onQueryChanged(original: String, substituted: String) = withContext(Dispatchers.Main) {
                             findViewById<TextView>(R.id.txt_query)?.text = substituted
