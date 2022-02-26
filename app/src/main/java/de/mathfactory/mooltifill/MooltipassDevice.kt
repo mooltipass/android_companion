@@ -73,7 +73,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
     private var mpGatt = CompletableDeferred<MooltipassGatt>()
     private val commFlow: MutableStateFlow<CommOp> = MutableStateFlow(CommOp.Disconnected)
     private val idleMutex = Mutex()
-    private var changedCharAccept = CompletableDeferred<Unit>().also { it.complete(Unit) }
+    private var changedCharAccept = CompletableDeferred<Unit>()
 
     fun ByteArray.toHexString(): String = this.joinToString("") {
         java.lang.String.format("%02x", it)
@@ -97,6 +97,7 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
 
     private suspend fun readNotified(predicate: (CommOp) -> Boolean = { true }): CommOp.ChangedChar? {
         if (mIsDisconnected) Log.e("Mooltifill", "readNotified() with mIsDisconnected == true")
+        // signal to accept CommOp.ChangedChar
         changedCharAccept.complete(Unit)
         return awaitCommFlowType<CommOp.ChangedChar>(READ_TIMEOUT, predicate)
     }
