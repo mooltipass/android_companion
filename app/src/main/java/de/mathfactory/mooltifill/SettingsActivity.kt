@@ -40,15 +40,14 @@ import kotlinx.coroutines.*
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
     Nochange, PreferWww, PreferNowww, AddWww, RemoveWww;
 
-    override fun policies(query: String): List<String> {
-        return when(this) {
+    override fun policies(query: String): List<String> =
+        when(this) {
             Nochange -> listOf(query)
             PreferWww -> listOf(withWww(query), withoutWww(query))
             PreferNowww -> listOf(withoutWww(query), withWww(query))
             AddWww -> listOf(withWww(query))
             RemoveWww -> listOf(withoutWww(query))
-        }
-    }
+        }.map(SubstitutionPolicy::transform)
 
     private fun withWww(query: String): String {
         if(query.startsWith("www.")) return query
@@ -61,14 +60,18 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
     }
 }
 
-enum class PkgSubstitutionPolicies : SubstitutionPolicy {
-    Nochange;
+class PkgSubstitutionPolicies(private val reverse: Boolean, private val maxComponentCount: Int) : SubstitutionPolicy {
+    override fun policies(query: String): List<String> =
+        listOf(query
+            // truncate components
+            .let(this::truncated)
+            // reverse components
+            .let { if (reverse) reversed(it) else it }
+            // base transform
+            .let(SubstitutionPolicy::transform))
 
-    override fun policies(query: String): List<String> {
-        return when(this) {
-            Nochange -> listOf(query)
-        }
-    }
+    private fun reversed(query: String): String = query.split(".").reversed().joinToString(".")
+    private fun truncated(query: String): String = query.split(".").take(maxComponentCount).joinToString(".")
 }
 
 class SettingsActivity : AppCompatActivity() {
@@ -78,12 +81,17 @@ class SettingsActivity : AppCompatActivity() {
         fun isDebugEnabled(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 0
         fun isDebugVerbose(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 1
         fun isAwarenessEnabled(context: Context): Boolean = booleanSetting(context, "awareness", true)
-        fun getUrlSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "www_substitution", null)
+
+        fun getSubstitutionPolicy(context: Context, isWebRq: Boolean): SubstitutionPolicy =
+            if(isWebRq) { getUrlSubstitutionPolicy(context) } else { getPackageSubstitutionPolicy(context) }
+
+        private fun getUrlSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "www_substitution", null)
             ?.let { UrlSubstitutionPolicies.valueOf(it) }
             ?: UrlSubstitutionPolicies.Nochange
-        fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "pkg_substitution", null)
-            ?.let { PkgSubstitutionPolicies.valueOf(it) }
-            ?: PkgSubstitutionPolicies.Nochange
+        private fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy =
+            PkgSubstitutionPolicies(
+                booleanSetting(context, "pkg_substitution_reverse", false),
+                intSetting(context, "pkg_substitution_max_components", 15))
 
         private fun <T> castChecked(block: () -> T): T? =
             try { block() } catch(e: ClassCastException) { null }

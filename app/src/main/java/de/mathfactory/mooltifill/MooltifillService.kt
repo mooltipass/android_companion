@@ -59,7 +59,9 @@ class MooltifillService : AutofillService() {
         val clientPackage = structure.activityComponent.packageName // app package
 
         val isWebDomain = webDomain.isNotEmpty()
-        val query = if(isWebDomain) {webDomain.toString()} else {clientPackage}
+        val substitution = SettingsActivity.getSubstitutionPolicy(this, isWebDomain)
+        // substitute the webDomain or clientPacakge according to configured policies
+        val query = if(isWebDomain) {webDomain.toString()} else {clientPackage}.let(substitution::policies).first()
         return AutofillInfo(query, autofillIds, isWebDomain)
     }
 
@@ -83,10 +85,9 @@ class MooltifillService : AutofillService() {
         val response = FillResponse.Builder()
 
         val dataset = Dataset.Builder()
-        val query = info.query.take(31)
-        val presentation = remoteViews(packageName, "Mooltipass", query)
+        val presentation = remoteViews(packageName, "Mooltipass", info.query)
         val intent = Intent(applicationContext, MooltifillActivity::class.java)
-        intent.putExtra(MooltifillActivity.EXTRA_QUERY, query)
+        intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query)
         intent.putExtra(MooltifillActivity.EXTRA_IS_WEB_REQUEST, info.isWebRequest)
         intent.putExtra(MooltifillActivity.EXTRA_USERNAME, username)
         intent.putExtra(MooltifillActivity.EXTRA_PASSWORD, password)
@@ -96,7 +97,7 @@ class MooltifillService : AutofillService() {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
         // reuse pending intent only if query is the same (through hashCode())
-        val pi = PendingIntent.getActivity(applicationContext, query.hashCode(), intent, flags)
+        val pi = PendingIntent.getActivity(applicationContext, info.query.hashCode(), intent, flags)
         dataset.setAuthentication(pi.intentSender)
         dataset.setValue(username, null, presentation)
         response.addDataset(dataset.build())
@@ -123,7 +124,7 @@ class MooltifillService : AutofillService() {
         }
         val context = applicationContext
         CoroutineScope(Dispatchers.IO).launch {
-            if(MooltifillActivity.setCredentials(context, info.query.take(31), username.textValue.toString(), password.textValue.toString())) {
+            if(MooltifillActivity.setCredentials(context, info.query, username.textValue.toString(), password.textValue.toString())) {
                 callback.onSuccess()
             } else {
                 callback.onFailure("Mooltifill save failed")

@@ -1,5 +1,6 @@
 <PreferenceScreen
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:android="http://schemas.android.com/apk/res/android">
 
     <PreferenceCategory
         app:title="@string/settings_header">
@@ -33,9 +34,10 @@
             app:entryValues="@array/debug_level_values"
             app:defaultValue="0"
             app:useSimpleSummaryProvider="true" />
-
     </PreferenceCategory>
-    <PreferenceCategory app:title="Service Mapping">
+
+    <PreferenceCategory
+            app:title="Service Mapping (urls)">
         <ListPreference
             app:key="www_substitution"
             app:title="Substitution of www. subdomain part from browser urls"
@@ -44,4 +46,22 @@
             app:defaultValue="Nochange"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
+
+    <PreferenceCategory
+            app:title="Service Mapping (app names)">
+        <SeekBarPreference
+            app:key="pkg_substitution_max_components"
+            app:title="Max. package name component count"
+            app:summary="Cut-off package name after specified amount of components"
+            app:defaultValue="15"
+            app:showSeekBarValue="true"
+            app:seekBarIncrement="1"
+            app:min="2"
+            android:max="15" />
+        <SwitchPreference
+            app:key="pkg_substitution_reverse"
+            app:title="Reverse package name components of apps"
+            app:defaultValue="false" />
+    </PreferenceCategory>
+
 </PreferenceScreen>
