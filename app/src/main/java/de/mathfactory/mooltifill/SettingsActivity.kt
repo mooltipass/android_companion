@@ -87,7 +87,7 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun getUrlSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "www_substitution", null)
             ?.let { UrlSubstitutionPolicies.valueOf(it) }
-            ?: UrlSubstitutionPolicies.Nochange
+            ?: UrlSubstitutionPolicies.RemoveWww
         private fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy =
             PkgSubstitutionPolicies(
                 booleanSetting(context, "pkg_substitution_reverse", false),
