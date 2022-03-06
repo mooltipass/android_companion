@@ -40,11 +40,11 @@
     </PreferenceCategory>
 
     <PreferenceCategory
-            app:title="Service Mapping (app names)">
+            app:title="Service Mapping (apps)">
         <SeekBarPreference
             app:key="pkg_substitution_max_components"
-            app:title="Max. package name component count"
-            app:summary="Cut-off package name after specified amount of components"
+            app:title="Max. app id component count"
+            app:summary="Cut-off app ids after specified amount of components"
             app:defaultValue="15"
             app:showSeekBarValue="true"
             app:seekBarIncrement="1"
@@ -52,7 +52,7 @@
             android:max="15" />
         <SwitchPreference
             app:key="pkg_substitution_reverse"
-            app:title="Reverse package name components of apps"
+            app:title="Revert components of app ids"
             app:defaultValue="false" />
     </PreferenceCategory>
 
