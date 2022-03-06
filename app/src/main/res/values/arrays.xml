@@ -1,15 +1,4 @@
 <resources>
-    <!-- Reply Preference -->
-    <string-array name="paranoia_entries">
-        <item>High</item>
-        <item>Low</item>
-    </string-array>
-
-    <string-array name="paranoia_values">
-        <item>high</item>
-        <item>low</item>
-    </string-array>
-
     <string-array name="debug_level_entries">
         <item>Off</item>
         <item>On</item>
@@ -22,17 +11,17 @@
         <item>2</item>
     </string-array>
     <string-array name="www_substitution_entries">
-        <item>Do not change subdomain part</item>
-        <item>Try with www. subdomain first, then without</item>
-        <item>Try without www. subdomain first, then with</item>
-        <item>Always add www. subdomain</item>
         <item>Always remove www. subdomain</item>
+        <item>Try without www. subdomain first</item>
+        <item>Try with www. subdomain first</item>
+        <item>Always add www. subdomain</item>
+        <item>Do not change subdomain part</item>
     </string-array>
     <string-array name="www_substitution_values">
-        <item>Nochange</item>
-        <item>PreferWww</item>
-        <item>PreferNowww</item>
-        <item>AddWww</item>
         <item>RemoveWww</item>
+        <item>PreferNowww</item>
+        <item>PreferWww</item>
+        <item>AddWww</item>
+        <item>Nochange</item>
     </string-array>
 </resources>

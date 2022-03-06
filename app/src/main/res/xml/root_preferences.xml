@@ -20,14 +20,6 @@
             app:title="Test Mooltipass Device Connection"
             app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
         <ListPreference
-            app:key="security"
-            app:title="@string/paranoia_title"
-            app:entries="@array/paranoia_entries"
-            app:entryValues="@array/paranoia_values"
-            app:defaultValue="high"
-            app:enabled="false"
-            app:useSimpleSummaryProvider="true" />
-        <ListPreference
             app:key="debug_level"
             app:title="Debug Output to logcat"
             app:entries="@array/debug_level_entries"
@@ -43,16 +35,16 @@
             app:title="Substitution of www. subdomain part from browser urls"
             app:entries="@array/www_substitution_entries"
             app:entryValues="@array/www_substitution_values"
-            app:defaultValue="Nochange"
+            app:defaultValue="RemoveWww"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
     <PreferenceCategory
-            app:title="Service Mapping (app names)">
+            app:title="Service Mapping (apps)">
         <SeekBarPreference
             app:key="pkg_substitution_max_components"
-            app:title="Max. package name component count"
-            app:summary="Cut-off package name after specified amount of components"
+            app:title="Max. app id component count"
+            app:summary="Cut-off app ids after specified amount of components"
             app:defaultValue="15"
             app:showSeekBarValue="true"
             app:seekBarIncrement="1"
@@ -60,7 +52,7 @@
             android:max="15" />
         <SwitchPreference
             app:key="pkg_substitution_reverse"
-            app:title="Reverse package name components of apps"
+            app:title="Revert components of app ids"
             app:defaultValue="false" />
     </PreferenceCategory>
 
