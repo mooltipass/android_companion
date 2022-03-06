@@ -20,14 +20,6 @@
             app:title="Test Mooltipass Device Connection"
             app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
         <ListPreference
-            app:key="security"
-            app:title="@string/paranoia_title"
-            app:entries="@array/paranoia_entries"
-            app:entryValues="@array/paranoia_values"
-            app:defaultValue="high"
-            app:enabled="false"
-            app:useSimpleSummaryProvider="true" />
-        <ListPreference
             app:key="debug_level"
             app:title="Debug Output to logcat"
             app:entries="@array/debug_level_entries"
