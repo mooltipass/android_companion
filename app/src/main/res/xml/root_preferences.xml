@@ -45,7 +45,7 @@
             app:key="pkg_substitution_max_components"
             app:title="Max. app id component count"
             app:summary="Cut-off app ids after specified amount of components"
-            app:defaultValue="15"
+            app:defaultValue="2"
             app:showSeekBarValue="true"
             app:seekBarIncrement="1"
             app:min="2"
