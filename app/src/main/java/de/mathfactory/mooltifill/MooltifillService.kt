@@ -38,7 +38,9 @@ import java.util.*
 private class AutofillInfo(val query: String, private val autofillIds: Map<String, Pair<AutofillId, AutofillValue?>>, val isWebRequest: Boolean) {
     public fun username() = autofillIds[View.AUTOFILL_HINT_USERNAME] ?: autofillIds[View.AUTOFILL_HINT_EMAIL_ADDRESS]
     public fun password() = autofillIds[View.AUTOFILL_HINT_PASSWORD]
-
+    fun substitutedQuery(context: Context) = SettingsActivity.getSubstitutionPolicy(context, isWebRequest).let {
+            substitution -> query.let(substitution::policies).first()
+    }
 }
 
 @FlowPreview
@@ -59,9 +61,8 @@ class MooltifillService : AutofillService() {
         val clientPackage = structure.activityComponent.packageName // app package
 
         val isWebDomain = webDomain.isNotEmpty()
-        val substitution = SettingsActivity.getSubstitutionPolicy(this, isWebDomain)
         // substitute the webDomain or clientPacakge according to configured policies
-        val query = if(isWebDomain) {webDomain.toString()} else {clientPackage}.let(substitution::policies).first()
+        val query = if(isWebDomain) {webDomain.toString()} else {clientPackage}
         return AutofillInfo(query, autofillIds, isWebDomain)
     }
 
@@ -85,7 +86,7 @@ class MooltifillService : AutofillService() {
         val response = FillResponse.Builder()
 
         val dataset = Dataset.Builder()
-        val presentation = remoteViews(packageName, "Mooltipass", info.query)
+        val presentation = remoteViews(packageName, "Mooltipass", info.substitutedQuery(applicationContext))
         val intent = Intent(applicationContext, MooltifillActivity::class.java)
         intent.putExtra(MooltifillActivity.EXTRA_QUERY, info.query)
         intent.putExtra(MooltifillActivity.EXTRA_IS_WEB_REQUEST, info.isWebRequest)
@@ -124,7 +125,7 @@ class MooltifillService : AutofillService() {
         }
         val context = applicationContext
         CoroutineScope(Dispatchers.IO).launch {
-            if(MooltifillActivity.setCredentials(context, info.query, username.textValue.toString(), password.textValue.toString())) {
+            if(MooltifillActivity.setCredentials(context, info.substitutedQuery(context), username.textValue.toString(), password.textValue.toString())) {
                 callback.onSuccess()
             } else {
                 callback.onFailure("Mooltifill save failed")
