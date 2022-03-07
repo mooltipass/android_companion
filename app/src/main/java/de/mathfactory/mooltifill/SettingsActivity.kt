@@ -91,7 +91,7 @@ class SettingsActivity : AppCompatActivity() {
         private fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy =
             PkgSubstitutionPolicies(
                 booleanSetting(context, "pkg_substitution_reverse", true),
-                intSetting(context, "pkg_substitution_max_components", 15))
+                intSetting(context, "pkg_substitution_max_components", 2))
 
         private fun <T> castChecked(block: () -> T): T? =
             try { block() } catch(e: ClassCastException) { null }
