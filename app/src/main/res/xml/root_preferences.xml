@@ -53,7 +53,7 @@
         <SwitchPreference
             app:key="pkg_substitution_reverse"
             app:title="Revert components of app ids"
-            app:defaultValue="false" />
+            app:defaultValue="true" />
     </PreferenceCategory>
 
 </PreferenceScreen>
