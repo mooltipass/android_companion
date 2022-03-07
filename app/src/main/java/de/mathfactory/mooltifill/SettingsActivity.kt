@@ -90,7 +90,7 @@ class SettingsActivity : AppCompatActivity() {
             ?: UrlSubstitutionPolicies.RemoveWww
         private fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy =
             PkgSubstitutionPolicies(
-                booleanSetting(context, "pkg_substitution_reverse", false),
+                booleanSetting(context, "pkg_substitution_reverse", true),
                 intSetting(context, "pkg_substitution_max_components", 15))
 
         private fun <T> castChecked(block: () -> T): T? =
