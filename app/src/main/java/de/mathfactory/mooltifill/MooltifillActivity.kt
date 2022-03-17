@@ -164,7 +164,7 @@ class MooltifillActivity : Activity() {
                             findViewById<TextView>(R.id.txt_status)?.text = if(hasCommService) {
                                 "sending request..."
                             } else {
-                                "No communication service found, please update device"
+                                "No communication service found, please update, un-pair and re-pair device"
                             }
                         }
                         override suspend fun onLocked() = withContext(Dispatchers.Main) {
