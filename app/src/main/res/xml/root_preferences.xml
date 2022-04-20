@@ -32,10 +32,10 @@
             app:title="Service Mapping (urls)">
         <ListPreference
             app:key="www_substitution"
-            app:title="Substitution of www. subdomain part from browser urls"
+            app:title="Subdomain Handling Behaviour"
             app:entries="@array/www_substitution_entries"
             app:entryValues="@array/www_substitution_values"
-            app:defaultValue="RemoveWww"
+            app:defaultValue="ApplyPublicSuffixList"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 

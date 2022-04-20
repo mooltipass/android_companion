@@ -11,6 +11,7 @@
         <item>2</item>
     </string-array>
     <string-array name="www_substitution_entries">
+        <item>Use public suffix list</item>
         <item>Always remove www. subdomain</item>
         <item>Try without www. subdomain first</item>
         <item>Try with www. subdomain first</item>
@@ -18,6 +19,7 @@
         <item>Do not change subdomain part</item>
     </string-array>
     <string-array name="www_substitution_values">
+        <item>ApplyPublicSuffixList</item>
         <item>RemoveWww</item>
         <item>PreferNowww</item>
         <item>PreferWww</item>
