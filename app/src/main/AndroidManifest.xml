@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="de.mathfactory.mooltifill">
 
+
     <uses-permission
             android:name="android.permission.BLUETOOTH"
             android:maxSdkVersion="30"/>
