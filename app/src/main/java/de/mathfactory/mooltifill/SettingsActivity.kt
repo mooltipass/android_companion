@@ -36,9 +36,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.*
 import kotlinx.coroutines.*
+import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
-    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww;
+    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, ApplyPublicSuffixList;
 
     override fun policies(query: String): List<String> =
         when(this) {
@@ -47,6 +48,7 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
             PreferNowww -> listOf(withoutWww(query), withWww(query))
             AddWww -> listOf(withWww(query))
             RemoveWww -> listOf(withoutWww(query))
+            ApplyPublicSuffixList -> listOf(applyMozilaPublicSuffixList(query))
         }.map(SubstitutionPolicy::transform)
 
     private fun withWww(query: String): String {
@@ -57,6 +59,10 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
     private fun withoutWww(query: String): String {
         if(query.startsWith("www.")) return query.substring(4)
         return query
+    }
+
+    private fun applyMozilaPublicSuffixList(query: String): String {
+        return PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
     }
 }
 
