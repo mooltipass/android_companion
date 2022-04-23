@@ -19,6 +19,7 @@
 
 package de.mathfactory.mooltifill
 
+import PublicSuffixManager
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -36,10 +37,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.*
 import kotlinx.coroutines.*
-import okhttp3.internal.publicsuffix.PublicSuffixDatabase
+import mozilla.components.lib.publicsuffixlist.PublicSuffixList
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
-    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, ApplyPublicSuffixList;
+    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, PublicSuffix, PublicSuffixWithSubDomain;
 
     override fun policies(query: String): List<String> =
         when(this) {
@@ -48,7 +49,8 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
             PreferNowww -> listOf(withoutWww(query), withWww(query))
             AddWww -> listOf(withWww(query))
             RemoveWww -> listOf(withoutWww(query))
-            ApplyPublicSuffixList -> listOf(applyMozilaPublicSuffixList(query))
+            PublicSuffix -> listOf(publicSuffix(query))
+            PublicSuffixWithSubDomain -> listOf(publicSuffixWithSubDomain(query))
         }.map(SubstitutionPolicy::transform)
 
     private fun withWww(query: String): String {
@@ -61,8 +63,12 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
         return query
     }
 
-    private fun applyMozilaPublicSuffixList(query: String): String {
-        return PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
+    private fun publicSuffix(query: String): String {
+        return PublicSuffixManager.getPublicSuffixPlusOne(query)
+    }
+
+    private fun publicSuffixWithSubDomain(query: String): String {
+        return PublicSuffixManager.getPublicSuffixWithSubdomain(query)
     }
 }
 
@@ -126,7 +132,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
         supportActionBar?.setHomeButtonEnabled(false)
-
+        PublicSuffixManager(this)
         permissionSetup(this)
         AwarenessService.ensureService(this)
     }

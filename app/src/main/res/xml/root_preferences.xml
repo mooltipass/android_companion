@@ -35,7 +35,7 @@
             app:title="Subdomain Handling Behaviour"
             app:entries="@array/www_substitution_entries"
             app:entryValues="@array/www_substitution_values"
-            app:defaultValue="ApplyPublicSuffixList"
+            app:defaultValue="PublicSuffix"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
