@@ -81,17 +81,18 @@ object PublicSuffixManager {
         val strippedDomain = domain.replace("www.","",true)
         val tld = runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }!!
         val compareResult = tld.toLowerCase().compareTo(strippedDomain.toLowerCase())
-        if (compareResult == 0)
-        {
-            return tld
-        }
-        else if (compareResult < 0)
-        {
-            val strippedTokens = domain.substringBefore("."+tld).split(".")
-            if(strippedTokens.last() != null)
-            {
-                val subdomain = strippedTokens.last() + "." + tld
-                return subdomain
+
+        when (compareResult) {
+            0 ->  {
+                return tld
+            }
+            else -> { // Explicitly combining TLD+one part with next level subdomain
+                val strippedTokens = domain.substringBefore("."+tld).split(".")
+                if(strippedTokens.last() != null)
+                {
+                    val subdomain = strippedTokens.last() + "." + tld
+                    return subdomain
+                }
             }
         }
 
@@ -100,6 +101,11 @@ object PublicSuffixManager {
 
 
     /**
+     *
+     *
+     * Note: Added these methods because in future we may have some requirement change accordinly
+     *
+     *
      * Returns the public suffix of the given [domain]; known as the effective top-level domain (eTLD). Returns `null`
      * if the [domain] is a public suffix itself.
      * @param [domain] _must_ be a valid domain. [PublicSuffixList] performs no validation, and if any unexpected values
@@ -126,6 +132,10 @@ object PublicSuffixManager {
     }
 
     /**
+     *
+     * Note: Added these methods because in future we may have some requirement change accordinly
+     *
+     *
      * Strips the public suffix from the given [domain]. Returns the original domain if no public suffix could be
      * stripped.
      * @param [domain] _must_ be a valid domain. [PublicSuffixList] performs no validation, and if any unexpected values
@@ -150,5 +160,4 @@ object PublicSuffixManager {
 
         return domain
     }
-
 }
