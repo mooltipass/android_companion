@@ -52,14 +52,7 @@ object PublicSuffixManager {
             return domain
         }
 
-        val result = runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }
-
-        if (result != null)
-        {
-            return  result
-        }
-
-        return domain
+        return runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }!!
     }
 
 
@@ -80,7 +73,7 @@ object PublicSuffixManager {
 
         val strippedDomain = domain.replace("www.","",true)
         val tld = runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }!!
-        val compareResult = tld.toLowerCase().compareTo(strippedDomain.toLowerCase())
+        val compareResult = tld.compareTo(strippedDomain)
 
         when (compareResult) {
             0 ->  {
@@ -88,11 +81,8 @@ object PublicSuffixManager {
             }
             else -> { // Explicitly combining TLD+one part with next level subdomain
                 val strippedTokens = domain.substringBefore("."+tld).split(".")
-                if(strippedTokens.last() != null)
-                {
-                    val subdomain = strippedTokens.last() + "." + tld
-                    return subdomain
-                }
+                val subdomain = strippedTokens.last() + "." + tld
+                return subdomain
             }
         }
 
@@ -121,14 +111,7 @@ object PublicSuffixManager {
             return domain
         }
 
-        val result = runBlocking { suffixList!!.getPublicSuffix(domain).await() }
-
-        if (result != null)
-        {
-            return  result
-        }
-
-        return domain
+        return runBlocking { suffixList!!.getPublicSuffix(domain).await() }!!
     }
 
     /**
@@ -151,13 +134,6 @@ object PublicSuffixManager {
             return domain
         }
 
-        val result = runBlocking { suffixList!!.stripPublicSuffix(domain).await() }
-
-        if (result != null)
-        {
-            return  result
-        }
-
-        return domain
+        return runBlocking { suffixList!!.stripPublicSuffix(domain).await() }!!
     }
 }
