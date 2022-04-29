@@ -34,7 +34,6 @@ object PublicSuffixManager {
 
     operator fun invoke(context: Context): PublicSuffixManager {
         suffixList = PublicSuffixList(context)
-        suffixList.prefetch()
         return this
     }
 
