@@ -19,7 +19,6 @@
 
 package de.mathfactory.mooltifill
 
-import PublicSuffixManager
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -37,7 +36,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.*
 import kotlinx.coroutines.*
-import mozilla.components.lib.publicsuffixlist.PublicSuffixList
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
     Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, PublicSuffix, PublicSuffixWithSubDomain;

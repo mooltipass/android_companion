@@ -18,13 +18,15 @@
  * along with Mooltifill.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+package de.mathfactory.mooltifill
+
 import android.content.Context
 import kotlinx.coroutines.runBlocking
 import mozilla.components.lib.publicsuffixlist.PublicSuffixList
 
 object PublicSuffixManager {
 
-    var suffixList: PublicSuffixList? = null
+    private lateinit var suffixList:PublicSuffixList
 
     /**
      * Just initialize suffixList object with application provided context.
@@ -32,7 +34,7 @@ object PublicSuffixManager {
 
     operator fun invoke(context: Context): PublicSuffixManager {
         suffixList = PublicSuffixList(context)
-        suffixList!!.prefetch()
+        suffixList.prefetch()
         return this
     }
 
@@ -45,14 +47,17 @@ object PublicSuffixManager {
 
     fun getPublicSuffixPlusOne(domain: String): String
     {
-        val isPublicSuffix = runBlocking { suffixList!!.isPublicSuffix(domain).await() }
-
-        if (isPublicSuffix)
+        val isPublicSuffix = runBlocking { suffixList.isPublicSuffix(domain).await() }
+        if (!isPublicSuffix)
         {
-            return domain
+            val suffix = runBlocking { suffixList.getPublicSuffixPlusOne(domain).await() }
+             if(suffix != null)
+             {
+                return suffix
+             }
         }
 
-        return runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }!!
+        return domain
     }
 
 
@@ -65,75 +70,27 @@ object PublicSuffixManager {
 
     fun getPublicSuffixWithSubdomain(domain: String): String
     {
-        val isPublicSuffix = runBlocking { suffixList!!.isPublicSuffix(domain).await() }
-        if (isPublicSuffix)
+        val isPublicSuffix = runBlocking { suffixList.isPublicSuffix(domain).await() }
+        if (!isPublicSuffix)
         {
-            return domain
-        }
-
-        val strippedDomain = domain.replace("www.","",true)
-        val tld = runBlocking { suffixList!!.getPublicSuffixPlusOne(domain).await() }!!
-        val compareResult = tld.compareTo(strippedDomain)
-
-        when (compareResult) {
-            0 ->  {
-                return tld
-            }
-            else -> { // Explicitly combining TLD+one part with next level subdomain
-                val strippedTokens = domain.substringBefore("."+tld).split(".")
-                val subdomain = strippedTokens.last() + "." + tld
-                return subdomain
+            val strippedDomain = domain.replace("www.","",true)
+            val tld = runBlocking { suffixList.getPublicSuffixPlusOne(domain).await() }
+            if(tld != null)
+            {
+                val compareResult = tld.compareTo(strippedDomain)
+                when (compareResult) {
+                    0 ->  {
+                        return tld
+                    }
+                    else -> { // Explicitly combining TLD+one part with next level one subdomain
+                        val strippedTokens = domain.substringBefore("." + tld).split(".")
+                        val subdomain = strippedTokens.last() + "." + tld
+                        return subdomain
+                    }
+                }
             }
         }
 
         return domain
-    }
-
-
-    /**
-     *
-     *
-     * Note: Added these methods because in future we may have some requirement change accordinly
-     *
-     *
-     * Returns the public suffix of the given [domain]; known as the effective top-level domain (eTLD). Returns `null`
-     * if the [domain] is a public suffix itself.
-     * @param [domain] _must_ be a valid domain. [PublicSuffixList] performs no validation, and if any unexpected values
-     * are passed (e.g., a full URL, a domain with a trailing '/', etc) this may return an incorrect result.
-     */
-
-    fun getPublicSuffix(domain: String): String
-    {
-        val isPublicSuffix = runBlocking { suffixList!!.isPublicSuffix(domain).await() }
-
-        if (isPublicSuffix)
-        {
-            return domain
-        }
-
-        return runBlocking { suffixList!!.getPublicSuffix(domain).await() }!!
-    }
-
-    /**
-     *
-     * Note: Added these methods because in future we may have some requirement change accordinly
-     *
-     *
-     * Strips the public suffix from the given [domain]. Returns the original domain if no public suffix could be
-     * stripped.
-     * @param [domain] _must_ be a valid domain. [PublicSuffixList] performs no validation, and if any unexpected values
-     * are passed (e.g., a full URL, a domain with a trailing '/', etc) this may return an incorrect result.
-     */
-
-    fun skipPublicSuffix(domain: String): String
-    {
-        val isPublicSuffix = runBlocking { suffixList!!.isPublicSuffix(domain).await() }
-
-        if (isPublicSuffix)
-        {
-            return domain
-        }
-
-        return runBlocking { suffixList!!.stripPublicSuffix(domain).await() }!!
     }
 }
