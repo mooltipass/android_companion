@@ -39,7 +39,7 @@ import kotlinx.coroutines.*
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
-    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, ApplyPublicSuffixList;
+    Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, PublicSuffix, PublicSuffixWithSubDomain;
 
     override fun policies(query: String): List<String> =
         when(this) {
@@ -48,7 +48,8 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
             PreferNowww -> listOf(withoutWww(query), withWww(query))
             AddWww -> listOf(withWww(query))
             RemoveWww -> listOf(withoutWww(query))
-            ApplyPublicSuffixList -> listOf(applyMozilaPublicSuffixList(query))
+            PublicSuffix -> listOf(publicSuffix(query))
+            PublicSuffixWithSubDomain -> listOf(publicSuffixWithSubDomain(query))
         }.map(SubstitutionPolicy::transform)
 
     private fun withWww(query: String): String {
@@ -61,8 +62,33 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
         return query
     }
 
-    private fun applyMozilaPublicSuffixList(query: String): String {
-        return PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
+    private fun publicSuffix(query: String): String {
+        val tld = PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
+        if (tld != null)
+        {
+            return tld
+        }
+        return query
+    }
+
+    private fun publicSuffixWithSubDomain(query: String): String {
+        val tld = PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
+        if (tld != null)
+        {
+            val strippedDomain = query.replace("www.","",true)
+            val compareResult = tld.compareTo(strippedDomain)
+            when (compareResult) {
+                0 ->  {
+                    return tld
+                }
+                else -> {
+                    // Explicitly combining TLD+one part with next level one subdomain
+                    val strippedTokens = query.substringBefore("." + tld).split(".")
+                    return strippedTokens.last() + "." + tld
+                }
+            }
+        }
+        return query
     }
 }
 
@@ -93,7 +119,7 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun getUrlSubstitutionPolicy(context: Context): SubstitutionPolicy = stringSetting(context, "www_substitution", null)
             ?.let { UrlSubstitutionPolicies.valueOf(it) }
-            ?: UrlSubstitutionPolicies.RemoveWww
+            ?: UrlSubstitutionPolicies.PublicSuffix
         private fun getPackageSubstitutionPolicy(context: Context): SubstitutionPolicy =
             PkgSubstitutionPolicies(
                 booleanSetting(context, "pkg_substitution_reverse", true),
@@ -126,7 +152,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
         supportActionBar?.setHomeButtonEnabled(false)
-
         permissionSetup(this)
         AwarenessService.ensureService(this)
     }
