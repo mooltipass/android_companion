@@ -46,6 +46,18 @@ private class AutofillInfo(val query: String, private val autofillIds: Map<Strin
 @FlowPreview
 @ExperimentalCoroutinesApi
 class MooltifillService : AutofillService() {
+    private fun logDebug(message: String) {
+        if(SettingsActivity.isDebugEnabled(applicationContext)) {
+            Log.d(TAG, message)
+        }
+    }
+
+    private fun logVerbose(message: String) {
+        if(SettingsActivity.isDebugEnabled(applicationContext)) {
+            Log.v(TAG, message)
+        }
+    }
+
     private fun getInfo(fillContexts: MutableList<FillContext>): AutofillInfo {
         // Find autofillable fields
         val structure = getLatestAssistStructure(fillContexts)
@@ -53,9 +65,7 @@ class MooltifillService : AutofillService() {
         //val isManual = (request.flags and FillRequest.FLAG_MANUAL_REQUEST) != 0
 
         val autofillIds = getAutofillableFields(structure, webDomain)//.filterKeys { it.contains("password") }.values.take(1)
-        if(SettingsActivity.isDebugEnabled(applicationContext)) {
-            Log.d(TAG, "autofillable fields:$autofillIds")
-        }
+        logDebug(TAG, "autofillable fields:$autofillIds")
 
         val packageName = applicationContext.packageName // this package
         val clientPackage = structure.activityComponent.packageName // app package
@@ -67,9 +77,7 @@ class MooltifillService : AutofillService() {
     }
 
     override fun onFillRequest(request: FillRequest, cancellationSignal: CancellationSignal, callback: FillCallback) {
-        if(SettingsActivity.isDebugEnabled(applicationContext)) {
-            Log.d(TAG, "onFillRequest()")
-        }
+        logDebug(TAG, "onFillRequest()")
 
         AwarenessService.onFillRequest(applicationContext)
 
@@ -78,6 +86,15 @@ class MooltifillService : AutofillService() {
         val username = info.username()?.first
         val password = info.password()?.first
         if (username == null || password == null) {
+            if(SettingsActivity.isDebugEnabled(applicationContext)) {
+                if (username == null) {
+                    Log.e(TAG, "No username field found.")
+                }
+                if (password == null) {
+                    Log.e(TAG, "No password field found.")
+                }
+            }
+
             callback.onSuccess(null)
             return
         }
@@ -108,6 +125,7 @@ class MooltifillService : AutofillService() {
             SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD or SaveInfo.SAVE_DATA_TYPE_USERNAME, arrayOf(username, password)).build()
         )
 
+        logDebug(TAG, "onFillRequest Success")
         callback.onSuccess(response.build())
     }
 
@@ -168,7 +186,7 @@ class MooltifillService : AutofillService() {
                 it.contains("container") -> null
                 it.contains("password") -> View.AUTOFILL_HINT_PASSWORD
                 it.contains("passwort") -> View.AUTOFILL_HINT_PASSWORD
-                it.contains("username") -> View.AUTOFILL_HINT_USERNAME
+                it.contains("user") -> View.AUTOFILL_HINT_USERNAME
                 it.contains("login") -> View.AUTOFILL_HINT_USERNAME
                 //it.contains("id") -> View.AUTOFILL_HINT_USERNAME
                 it.contains("email") -> View.AUTOFILL_HINT_EMAIL_ADDRESS
@@ -182,14 +200,32 @@ class MooltifillService : AutofillService() {
 
     private fun getHint(node: AssistStructure.ViewNode): String? {
         // return first autofill hint, if present
-        node.autofillHints?.firstOrNull()?.let { return it }
+        node.autofillHints?.firstOrNull()?.let {
+            logDebug(TAG, "Found pre-existing hint $it")
+
+            inferHint(it)?.let {
+                logDebug(TAG, "Inferred hint from pre-existing hint: $it")
+                return it
+            }
+        }
+
         // ensure we are an EditText
         if(node.className?.contains("EditText") == true) {
+            logDebug(TAG, "Node is an EditText")
+
             // infer hint from getHint()
-            inferHint(node.hint)?.let { return it }
+            inferHint(node.hint)?.let {
+                logDebug(TAG, "Inferred hint from hint: $it")
+                return it
+            }
+
             // infer hint from id
-            inferHint(node.idEntry)?.let { return it }
+            inferHint(node.idEntry)?.let {
+                logDebug(TAG, "Inferred hint from id: $it")
+                return it
+            }
         }
+
         // infer hint from input type
         when(node.inputType and InputType.TYPE_MASK_CLASS) {
             InputType.TYPE_CLASS_TEXT -> when (node.inputType and InputType.TYPE_MASK_VARIATION) {
@@ -204,16 +240,25 @@ class MooltifillService : AutofillService() {
                 else -> null
             }
             else -> null
-        }?.let { return it }
-        // infer hint from html info
+        }?.let {
+            logDebug(TAG, "Inferred hint from inputType: $it")
+            return it
+        }
+
+        // infer hint from html type=password
         if(node.htmlInfo?.attributes?.any { it.first == "type" && it.second == "password" } == true) {
+            logDebug(TAG, "Inferred hint from HTML attribute where type='password': AUTOFILL_HINT_PASSWORD")
             return View.AUTOFILL_HINT_PASSWORD
         }
+
+        // infer hint from type='text' and the HTML element's name or id
         if(node.htmlInfo?.attributes?.any {it.first == "type" && it.second == "text"} == true) {
             return inferHint(node.htmlInfo?.attributes?.firstOrNull { it.first == "name" }?.second)
                 ?: inferHint(node.htmlInfo?.attributes?.firstOrNull { it.first == "id" }?.second)
         }
+
         // give up
+        Log.w(TAG, "Couldn't figure out what this view was!")
         return null
     }
 
@@ -226,14 +271,10 @@ class MooltifillService : AutofillService() {
     ) {
         fun addAutofillableField(hint: String, id: AutofillId?, value: AutofillValue?) {
             if (!fields.containsKey(hint)) {
-                if (SettingsActivity.isDebugEnabled(applicationContext)) {
-                    Log.v(TAG, "Setting hint '$hint' on $id")
-                }
+                logVerbose(TAG, "Setting hint '$hint' on $id")
                 fields[hint] = Pair(id!!, value)
             } else {
-                if (SettingsActivity.isDebugEnabled(applicationContext)) {
-                    Log.v(TAG, "Ignoring hint '$hint' on $id because it was already set")
-                }
+                logVerbose(TAG, "Ignoring hint '$hint' on $id because it was already set")
             }
         }
         getHint(node)?.let { hint ->
