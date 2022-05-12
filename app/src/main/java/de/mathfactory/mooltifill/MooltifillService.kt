@@ -65,7 +65,7 @@ class MooltifillService : AutofillService() {
         //val isManual = (request.flags and FillRequest.FLAG_MANUAL_REQUEST) != 0
 
         val autofillIds = getAutofillableFields(structure, webDomain)//.filterKeys { it.contains("password") }.values.take(1)
-        logDebug(TAG, "autofillable fields:$autofillIds")
+        logDebug("autofillable fields:$autofillIds")
 
         val packageName = applicationContext.packageName // this package
         val clientPackage = structure.activityComponent.packageName // app package
@@ -77,7 +77,7 @@ class MooltifillService : AutofillService() {
     }
 
     override fun onFillRequest(request: FillRequest, cancellationSignal: CancellationSignal, callback: FillCallback) {
-        logDebug(TAG, "onFillRequest()")
+        logDebug("onFillRequest()")
 
         AwarenessService.onFillRequest(applicationContext)
 
@@ -125,7 +125,7 @@ class MooltifillService : AutofillService() {
             SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_PASSWORD or SaveInfo.SAVE_DATA_TYPE_USERNAME, arrayOf(username, password)).build()
         )
 
-        logDebug(TAG, "onFillRequest Success")
+        logDebug("onFillRequest Success")
         callback.onSuccess(response.build())
     }
 
@@ -201,27 +201,27 @@ class MooltifillService : AutofillService() {
     private fun getHint(node: AssistStructure.ViewNode): String? {
         // return first autofill hint, if present
         node.autofillHints?.firstOrNull()?.let {
-            logDebug(TAG, "Found pre-existing hint $it")
+            logDebug("Found pre-existing hint $it")
 
             inferHint(it)?.let {
-                logDebug(TAG, "Inferred hint from pre-existing hint: $it")
+                logDebug("Inferred hint from pre-existing hint: $it")
                 return it
             }
         }
 
         // ensure we are an EditText
         if(node.className?.contains("EditText") == true) {
-            logDebug(TAG, "Node is an EditText")
+            logDebug("Node is an EditText")
 
             // infer hint from getHint()
             inferHint(node.hint)?.let {
-                logDebug(TAG, "Inferred hint from hint: $it")
+                logDebug("Inferred hint from hint: $it")
                 return it
             }
 
             // infer hint from id
             inferHint(node.idEntry)?.let {
-                logDebug(TAG, "Inferred hint from id: $it")
+                logDebug("Inferred hint from id: $it")
                 return it
             }
         }
@@ -241,13 +241,13 @@ class MooltifillService : AutofillService() {
             }
             else -> null
         }?.let {
-            logDebug(TAG, "Inferred hint from inputType: $it")
+            logDebug("Inferred hint from inputType: $it")
             return it
         }
 
         // infer hint from html type=password
         if(node.htmlInfo?.attributes?.any { it.first == "type" && it.second == "password" } == true) {
-            logDebug(TAG, "Inferred hint from HTML attribute where type='password': AUTOFILL_HINT_PASSWORD")
+            logDebug("Inferred hint from HTML attribute where type='password': AUTOFILL_HINT_PASSWORD")
             return View.AUTOFILL_HINT_PASSWORD
         }
 
@@ -258,7 +258,7 @@ class MooltifillService : AutofillService() {
         }
 
         // give up
-        Log.w(TAG, "Couldn't figure out what this view was!")
+        logDebug("Couldn't figure out what this view was!")
         return null
     }
 
@@ -271,10 +271,10 @@ class MooltifillService : AutofillService() {
     ) {
         fun addAutofillableField(hint: String, id: AutofillId?, value: AutofillValue?) {
             if (!fields.containsKey(hint)) {
-                logVerbose(TAG, "Setting hint '$hint' on $id")
+                logVerbose("Setting hint '$hint' on $id")
                 fields[hint] = Pair(id!!, value)
             } else {
-                logVerbose(TAG, "Ignoring hint '$hint' on $id because it was already set")
+                logVerbose("Ignoring hint '$hint' on $id because it was already set")
             }
         }
         getHint(node)?.let { hint ->
