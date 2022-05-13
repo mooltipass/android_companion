@@ -199,29 +199,29 @@ class MooltifillService : AutofillService() {
     }
 
     private fun getHint(node: AssistStructure.ViewNode): String? {
-        // return first autofill hint, if present
-        node.autofillHints?.firstOrNull()?.let {
-            logDebug("Found pre-existing hint $it")
+        if((node.autofillHints?.size ?: 0) > 0) {
+            // log existing autofillHints
+            logDebug("autofillHints: " + node.autofillHints?.joinToString(prefix = "[", postfix = "]"))
+        }
 
-            inferHint(it)?.let {
-                logDebug("Inferred hint from pre-existing hint: $it")
-                return it
-            }
+        // return first inferable autofill hint, if available
+        node.autofillHints?.firstNotNullOfOrNull(this::inferHint)?.let {
+            logDebug("Inferred hint from pre-existing hint: $it")
+            return it
         }
 
         // ensure we are an EditText
         if(node.className?.contains("EditText") == true) {
-            logDebug("Node is an EditText")
 
             // infer hint from getHint()
             inferHint(node.hint)?.let {
-                logDebug("Inferred hint from hint: $it")
+                logDebug("Inferred hint from EditText hint: $it")
                 return it
             }
 
             // infer hint from id
             inferHint(node.idEntry)?.let {
-                logDebug("Inferred hint from id: $it")
+                logDebug("Inferred hint from EditText id: $it")
                 return it
             }
         }
@@ -258,7 +258,6 @@ class MooltifillService : AutofillService() {
         }
 
         // give up
-        logDebug("Couldn't figure out what this view was!")
         return null
     }
 
