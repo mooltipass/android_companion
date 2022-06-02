@@ -49,7 +49,7 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
             AddWww -> listOf(withWww(query))
             RemoveWww -> listOf(withoutWww(query))
             PublicSuffix -> listOf(publicSuffix(query))
-            PublicSuffixWithSubDomain -> listOf(publicSuffixWithSubDomain(query))
+            PublicSuffixWithSubDomain -> publicSuffixWithSubDomain(query)
         }.map(SubstitutionPolicy::transform)
 
     private fun withWww(query: String): String {
@@ -71,7 +71,7 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
         return query
     }
 
-    private fun publicSuffixWithSubDomain(query: String): String {
+    private fun publicSuffixWithSubDomain(query: String): List<String> {
         val tld = PublicSuffixDatabase.get().getEffectiveTldPlusOne(query)
         if (tld != null)
         {
@@ -79,16 +79,16 @@ enum class UrlSubstitutionPolicies : SubstitutionPolicy {
             val compareResult = tld.compareTo(strippedDomain)
             when (compareResult) {
                 0 ->  {
-                    return tld
+                    return listOf(tld)
                 }
                 else -> {
                     // Explicitly combining TLD+one part with next level one subdomain
                     val strippedTokens = query.substringBefore("." + tld).split(".")
-                    return strippedTokens.last() + "." + tld
+                    return listOf(strippedTokens.last() + "." + tld, tld)
                 }
             }
         }
-        return query
+        return listOf(query)
     }
 }
 
