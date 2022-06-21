@@ -45,7 +45,7 @@ sealed class CommOp(val status: Int) {
     }
 }
 
-private const val DEVICE_NAME = "Mooltipass BLE"
+private const val MAC_ADDRESS_BASE_VALUE = "68:79:12:3"
 private const val WRITE_TIMEOUT = 20000L
 private const val READ_TIMEOUT = 20000L
 private const val CHANGED_CHAR_FETCH_TIMEOUT = 2000L
@@ -56,7 +56,7 @@ private const val UUID_DESCRIPTOR_CCC = "00002902-0000-1000-8000-00805f9b34fb"
 private const val MTU_BYTES = 128
 private const val N_RETRIES = 5
 
-private fun filter(device: BluetoothDevice) = device.name == DEVICE_NAME /* && device.bondState == BluetoothDevice.BOND_BONDED*/
+private fun filter(device: BluetoothDevice) = device.address.startsWith(MAC_ADDRESS_BASE_VALUE,true)
 
 private class MooltipassGatt(val gatt: BluetoothGatt) {
     fun service(): BluetoothGattService? = gatt.services.firstOrNull { it.uuid.toString() == UUID_COMM_SERVICE }
