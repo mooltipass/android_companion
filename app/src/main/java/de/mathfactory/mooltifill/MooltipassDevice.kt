@@ -20,7 +20,10 @@
 package de.mathfactory.mooltifill
 
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
@@ -46,6 +49,7 @@ sealed class CommOp(val status: Int) {
 }
 
 private const val MAC_ADDRESS_BASE_VALUE = "68:79:12:3"
+
 private const val WRITE_TIMEOUT = 20000L
 private const val READ_TIMEOUT = 20000L
 private const val CHANGED_CHAR_FETCH_TIMEOUT = 2000L
@@ -55,8 +59,6 @@ private const val UUID_CHAR_WRITE = "fe8f1a02-6311-475f-a296-553e3566b895"
 private const val UUID_DESCRIPTOR_CCC = "00002902-0000-1000-8000-00805f9b34fb"
 private const val MTU_BYTES = 128
 private const val N_RETRIES = 5
-
-private fun filter(device: BluetoothDevice) = device.address.startsWith(MAC_ADDRESS_BASE_VALUE,true)
 
 private class MooltipassGatt(val gatt: BluetoothGatt) {
     fun service(): BluetoothGattService? = gatt.services.firstOrNull { it.uuid.toString() == UUID_COMM_SERVICE }
@@ -428,16 +430,69 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
 @ExperimentalCoroutinesApi
 class MooltipassScan {
 
+    private var context:Context? = null
+
     private fun pairedDevice(context: Context): BluetoothDevice? {
+        scheduleBlutoothStateObserver(context);
+
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bondedDevices.lastOrNull(::filter)
+        return bluetoothManager.adapter.bondedDevices.filter(::filter).firstOrNull()
     }
 
     fun deviceFlow(context: Context): Flow<BluetoothDevice> {
         return pairedDevice(context)
-            ?.let(::flowOf) // use paired device, if available...
-            ?: emptyFlow() // do not scan, as paired device is necessary
+                ?.let(::flowOf) // use paired device, if available...
+                ?: emptyFlow() // do not scan, as paired device is necessary
 //            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
+    }
+
+    private fun scheduleBlutoothStateObserver(context: Context)
+    {
+        this.context = context
+        val filter = IntentFilter()
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        context.registerReceiver(broadcastReceiver, filter)
+    }
+
+    private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+
+            if (BluetoothDevice.ACTION_ACL_CONNECTED == intent.action) {
+                val currentDevice:BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                if(currentDevice?.address!!.startsWith(MAC_ADDRESS_BASE_VALUE,true))
+                {
+                    saveDevice(context,currentDevice)
+                }
+            }
+        }
+    }
+
+    private fun saveDevice(context: Context?, currentDevice:BluetoothDevice?)
+    {
+        val sharedPreference =  context?.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
+        var editor = sharedPreference?.edit()
+        editor?.putString("DEVICE_NAME",currentDevice?.name)
+        editor?.putString("DEVICE_MAC",currentDevice?.address)
+        editor?.commit()
+    }
+
+    private fun lastConnectedDeviceMac() : String?
+    {
+        val sharedPreference =  this.context?.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
+        return sharedPreference?.getString("DEVICE_MAC",null)
+    }
+
+    private fun filter(device: BluetoothDevice) = device.address.startsWith(MAC_ADDRESS_BASE_VALUE, true) && isConnected(device)
+
+    private fun isConnected(device: BluetoothDevice): Boolean {
+
+        val address =  lastConnectedDeviceMac()
+        if(address != null)
+        {
+            return device.address.equals(address, true)
+        }
+
+        return false
     }
 
 //    private fun scanFlow(context: Context): Flow<ScanResult> {
