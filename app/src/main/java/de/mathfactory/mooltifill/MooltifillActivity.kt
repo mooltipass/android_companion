@@ -138,7 +138,7 @@ class MooltifillActivity : Activity() {
             if(answer.cmd != MooltipassCommand.PING_BLE || !(ping.data contentEquals answer.data)) {
                 return Result.failure(Exception("Ping response invalid"))
             }
-            return Result.success("Successfully connected to device!")
+            return Result.success("Successfully connected to " + device.description())
         }
     }
 

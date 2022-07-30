@@ -56,7 +56,7 @@ private const val UUID_DESCRIPTOR_CCC = "00002902-0000-1000-8000-00805f9b34fb"
 private const val MTU_BYTES = 128
 private const val N_RETRIES = 5
 
-private fun filter(device: BluetoothDevice) = device.address.startsWith(MAC_ADDRESS_BASE_VALUE,true)
+private fun filter(device: BluetoothDevice) = device.address?.startsWith(MAC_ADDRESS_BASE_VALUE,true) ?: false
 
 private class MooltipassGatt(val gatt: BluetoothGatt) {
     fun service(): BluetoothGattService? = gatt.services.firstOrNull { it.uuid.toString() == UUID_COMM_SERVICE }
@@ -410,17 +410,16 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
 
     fun isDisconnected(): Boolean = mIsDisconnected
 
+    fun address(): String? = device.address
+
+    fun name(): String? = device.name
+
+    fun description() = name() + " [" + address() + "]"
+
     @FlowPreview
     companion object {
-        suspend fun connect(context: Context, debug: Int, bleCallback: BluetoothGattCallback? = null): MooltipassDevice? {
-            val device = MooltipassScan().deviceFlow(context)
-                .firstOrNull { it.bondState == BluetoothDevice.BOND_BONDED }
-                ?: return null
-
-            val dev = MooltipassDevice(device, debug)
-            dev.connect(CoroutineScope(Dispatchers.IO), context, bleCallback)
-            return dev
-        }
+        fun bondedDevices(context: Context, debug: Int) =
+            MooltipassScan().devices(context).map { MooltipassDevice(it, debug) }
     }
 }
 
@@ -428,54 +427,8 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
 @ExperimentalCoroutinesApi
 class MooltipassScan {
 
-    private fun pairedDevice(context: Context): BluetoothDevice? {
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bondedDevices.lastOrNull(::filter)
-    }
-
-    fun deviceFlow(context: Context): Flow<BluetoothDevice> {
-        return pairedDevice(context)
-            ?.let(::flowOf) // use paired device, if available...
-            ?: emptyFlow() // do not scan, as paired device is necessary
-//            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
-    }
-
-//    private fun scanFlow(context: Context): Flow<ScanResult> {
-//        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-//        return bluetoothManager.adapter.bluetoothLeScanner
-//            ?.let(::scanFlow)
-//            ?:emptyFlow() // Bluetooth not enabled?
-//    }
-//
-//    private fun scanFlow(scanner: BluetoothLeScanner): Flow<ScanResult> = callbackFlow {
-//        val cb = object : ScanCallback() {
-//
-//            private fun handleScanResult(result: ScanResult) {
-//                if(filter(result.device ?: return)) {
-//                    trySend(result)
-//                }
-//            }
-//
-//            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-//                handleScanResult(result ?: return)
-//            }
-//
-//            override fun onBatchScanResults(results: MutableList<ScanResult>?) {
-//                results?.forEach(::handleScanResult)
-//            }
-//
-//            override fun onScanFailed(errorCode: Int) = cancel("Scan failed: $errorCode")
-//
-//        }
-//
-//        scanner.startScan(listOf(ScanFilter.Builder().setDeviceName(DEVICE_NAME).build()), ScanSettings.Builder().build(), cb)
-//        launch {
-//            delay(SCAN_TIMEOUT)
-//            channel.close()
-//        }
-//
-//        awaitClose {
-//            scanner.stopScan(cb)
-//        }
-//    }
+    // Simply uses the Android BluetoothManager to return all bonded Mooltipass devices
+    fun devices(context: Context): List<BluetoothDevice> =
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
+            .adapter.bondedDevices.filter(::filter).reversed()
 }

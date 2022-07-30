@@ -12,10 +12,11 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import de.mathfactory.mooltifill.AwarenessService.Companion.notify
+import de.mathfactory.mooltifill.AwarenessService.Companion.setActive
 import kotlinx.coroutines.*
 
 
-class AwarenessCallback(private val context: Context) : BluetoothGattCallback() {
+class AwarenessCallback(private val context: Context, private val device: MooltipassDevice, private val connectedCallback: (MooltipassDevice) -> Unit) : BluetoothGattCallback() {
     private var mLocked: Boolean? = null
     private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
 
@@ -31,24 +32,31 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
             false -> " (unlocked)"
             null -> ""
         }
-
-        CoroutineScope(Dispatchers.Main).notify(context, msg)
+        if(AwarenessService.isActive(device)) {
+            // only send notifications for the active device
+            CoroutineScope(Dispatchers.Main).notify(context, msg)
+        }
     }
 
     override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
         mConnectState = newState
         if(newState != BluetoothProfile.STATE_CONNECTED) mLocked = null
         else {
+            connectedCallback(device)
             // send query for lock status
             CoroutineScope(Dispatchers.IO).launch {
-                val device = AwarenessService.mooltipassDevice(context)
                 if(SettingsActivity.isDebugEnabled(context)) Log.d("Mooltifill", "reading lock status")
                 // query will be parsed in AwarenessCallback::onCharacteristicChanged()
-                device?.communicate(BleMessageFactory(), MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE))
+                device.communicate(BleMessageFactory(), MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE))
             }
         }
         if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-            AwarenessService.close()
+            CoroutineScope(Dispatchers.IO).launch {
+                device.close()
+                if(AwarenessService.isActive(device)) {
+                    setActive(null)
+                }
+            }
         }
         sendNotification()
     }
@@ -78,13 +86,17 @@ class AwarenessService : Service() {
             manager.notify(ONGOING_NOTIFICATION_ID, notification)
         }
 
+        private const val DEVICE_CONNECT_TIMEOUT: Long = 20000
         internal const val ONGOING_NOTIFICATION_ID = 100
         private const val CHANNEL_ID = "channel_mooltifill"
         private const val CHANNEL_NAME = "Mooltifill"
         private const val EXTRA_MESSAGE = "message"
 
-        private var device: MooltipassDevice? = null
-        internal var serviceStarted = CompletableDeferred<Unit>()
+        private var allDevices = CompletableDeferred<Array<MooltipassDevice>>()
+        private var device = CompletableDeferred<MooltipassDevice>()
+        internal val serviceStarted = CompletableDeferred<Unit>()
+
+        fun deviceList() = allDevices
 
         fun onFillRequest(context: Context) {
             ensureService(context)
@@ -108,10 +120,27 @@ class AwarenessService : Service() {
         }
 
         suspend fun mooltipassDevice(context: Context, debug: Int = SettingsActivity.debugLevel(context)): MooltipassDevice? {
-            if(device == null || device?.isDisconnected() != false) {
-                device = MooltipassDevice.connect(context, debug, AwarenessCallback(context))
+            if(allDevices.isActive) { // complete deferred
+                val bonded = MooltipassDevice.bondedDevices(context, debug)
+                allDevices.complete(bonded.map { dev ->
+                    dev.connect(CoroutineScope(Dispatchers.IO), context, AwarenessCallback(context, dev) {
+                        // if device has been chosen, filter accordingly
+                        if(SettingsActivity.isChosenDeviceAddress(context, dev.address(), true)) {
+                            // the first device that connects will be taken
+                            device.complete(it)
+                        }
+                    })
+                    dev
+                }.toTypedArray())
             }
-            return device
+            return withTimeoutOrNull(DEVICE_CONNECT_TIMEOUT) {
+                return@withTimeoutOrNull device.await()
+            }
+        }
+
+        fun unlearnDevices() {
+            allDevices = CompletableDeferred()
+            device = CompletableDeferred()
         }
 
         internal fun createNotification(context: Context, text: CharSequence?): Notification {
@@ -140,17 +169,26 @@ class AwarenessService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        fun setDebug(debug: Int) {
-            device?.setDebug(debug)
-        }
+        fun setDebug(debug: Int) = try {
+            allDevices.getCompleted().forEach { it.setDebug(debug) }
+        } catch (_: IllegalStateException) {}
 
-        fun close() {
-            device?.let {
+        fun closeAll() = try {
+            allDevices.getCompleted().forEach {
                 CoroutineScope(Dispatchers.IO).launch {
                     it.close()
                 }
             }
-            device = null
+        } catch (_: IllegalStateException) {}
+
+        fun setActive(d: MooltipassDevice?) {
+            device = d?.let(::CompletableDeferred) ?: CompletableDeferred()
+        }
+
+        fun isActive(d: MooltipassDevice) = try {
+            device.getCompleted() == d
+        } catch (_: IllegalStateException) {
+            false
         }
     }
 
@@ -162,10 +200,14 @@ class AwarenessService : Service() {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     when(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
                         BluetoothAdapter.STATE_OFF -> {
-                            close()
+                            closeAll()
+                            unlearnDevices()
                             "Bluetooth Off"
                         }
-                        BluetoothAdapter.STATE_ON -> "Disconnected"
+                        BluetoothAdapter.STATE_ON -> {
+                            ensureService(context)
+                            "Disconnected"
+                        }
                         else -> null
                     }
                 }

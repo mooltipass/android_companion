@@ -34,6 +34,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import androidx.preference.*
 import kotlinx.coroutines.*
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
@@ -113,6 +114,9 @@ class SettingsActivity : AppCompatActivity() {
         fun isDebugEnabled(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 0
         fun isDebugVerbose(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 1
         fun isAwarenessEnabled(context: Context): Boolean = booleanSetting(context, "awareness", true)
+        fun isChosenDeviceAddress(context: Context, mac: String?, default: Boolean) = stringSetting(context, "chosen_device", null)
+                ?.let { it == mac } ?: default
+        fun setChosenDeviceAddress(context: Context, mac: String?) = if(mac == null) removeKey(context, "chosen_device") else putString(context, "chosen_device", mac)
 
         fun getSubstitutionPolicy(context: Context, isWebRq: Boolean): SubstitutionPolicy =
             if(isWebRq) { getUrlSubstitutionPolicy(context) } else { getPackageSubstitutionPolicy(context) }
@@ -127,6 +131,12 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun <T> castChecked(block: () -> T): T? =
             try { block() } catch(e: ClassCastException) { null }
+
+        private fun putString(context: Context, key: String, value: String) =
+            PreferenceManager.getDefaultSharedPreferences(context).edit { putString(key, value) }
+
+        private fun removeKey(context: Context, key: String) =
+            PreferenceManager.getDefaultSharedPreferences(context).edit{ remove(key) }
 
         private fun booleanSetting(context: Context, key: String, default: Boolean) =
             castChecked { PreferenceManager.getDefaultSharedPreferences(context).getBoolean(key, default) } ?: default
@@ -201,6 +211,70 @@ class SettingsActivity : AppCompatActivity() {
 //        }
     }
 
+    class DeviceFragment : PreferenceFragmentCompat() {
+        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+            setPreferencesFromResource(R.xml.device_preferences, rootKey)
+
+            findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {
+                CoroutineScope(Dispatchers.Main).launch {
+                    it.summary = "Waiting for device access..."
+                    val ping = withContext(Dispatchers.IO) {
+                        MooltifillActivity.ping(requireContext())
+                    }
+                    it.summary = ping.getOrNull() ?: ping.exceptionOrNull()?.message
+                }
+                true
+            }
+
+            val rescan: () -> Unit = {
+                CoroutineScope(Dispatchers.Main).launch {
+                    findPreference<PreferenceCategory>("device_list")?.let { cat ->
+                        cat.removeAll()
+                        cat.addPreference(Preference(requireContext()).apply {
+                            title = "Performing scan..."
+                        })
+                        val devices = AwarenessService.deviceList().await()
+                        // get context after suspend. If we went out of view, return
+                        val ctx = context ?: return@let
+                        cat.removeAll()
+                        if (devices.isEmpty()) {
+                            cat.addPreference(Preference(ctx).apply {
+                                title =
+                                    "No device found. Please ensure bluetooth is enabled and the device is bonded in the Android system settings"
+                            })
+                        } else {
+                            devices.forEach { device ->
+                                cat.addPreference(Preference(ctx).also {
+                                    val chosen = isChosenDeviceAddress(ctx, device.address(), false)
+                                    if(chosen) it.setSummary(R.string.device_is_chosen)
+                                    it.title = device.description()
+                                    it.setOnPreferenceClickListener { p ->
+                                        Toast.makeText(
+                                            context,
+                                            "Using device " + device.description(),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        // save preference
+                                        setChosenDeviceAddress(ctx, device.address())
+                                        for(pd in cat) {
+                                            pd.summary = null
+                                        }
+                                        p.setSummary(R.string.device_is_chosen)
+                                        // switch device
+                                        AwarenessService.setActive(device)
+                                        true
+                                    }
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+
+            rescan()
+        }
+    }
+
     @FlowPreview
     @ExperimentalCoroutinesApi
     class SettingsFragment : PreferenceFragmentCompat() {
@@ -249,14 +323,12 @@ class SettingsActivity : AppCompatActivity() {
                 else AwarenessService.ensureService(requireContext(), null, true)
                 true
             }
-            findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {
-                CoroutineScope(Dispatchers.Main).launch {
-                    it.summary = "Waiting for device access..."
-                    val ping = withContext(Dispatchers.IO) {
-                        MooltifillActivity.ping(requireContext())
-                    }
-                    it.summary = ping.getOrNull() ?: ping.exceptionOrNull()?.message
-                }
+            findPreference<Preference>("device_settings")?.setOnPreferenceClickListener {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings, DeviceFragment())
+                    .setReorderingAllowed(true)
+                    .addToBackStack(null)
+                    .commit()
                 true
             }
         }

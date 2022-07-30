@@ -16,9 +16,9 @@
             app:summaryOff="Do not track connection state of the mooltipass device"
             app:defaultValue="true" />
         <Preference
-            app:key="test_ping"
-            app:title="Test Mooltipass Device Connection"
-            app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
+            app:key="device_settings"
+            app:title="Device Settings"
+            app:summary="Open the device settings" />
         <ListPreference
             app:key="debug_level"
             app:title="Debug Output to logcat"
