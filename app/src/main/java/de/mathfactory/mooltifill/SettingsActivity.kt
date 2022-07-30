@@ -21,8 +21,11 @@ package de.mathfactory.mooltifill
 
 import android.Manifest
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -154,6 +157,7 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setHomeButtonEnabled(false)
         permissionSetup(this)
         AwarenessService.ensureService(this)
+        scheduleBlutoothStateObserver()
     }
 
     private fun permissionSetup(context: Context) {
@@ -200,6 +204,40 @@ class SettingsActivity : AppCompatActivity() {
 //
 //        }
     }
+
+    private fun scheduleBlutoothStateObserver()
+    {
+        val filter = IntentFilter()
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+        registerReceiver(deviceStatesReceiver, filter)
+    }
+
+    private val deviceStatesReceiver: BroadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent) {
+            if (BluetoothDevice.ACTION_ACL_CONNECTED == intent.action) {
+                //Toast.makeText(applicationContext, "------SCONNECTED------", Toast.LENGTH_SHORT).show()
+                val currentDevice: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                if(currentDevice?.address?.startsWith("",true) == true)
+                {
+                    saveDevice(currentDevice)
+                }
+            }
+        }
+    }
+
+    private fun saveDevice(currentDevice: BluetoothDevice?)
+    {
+        val sharedPreference =  this.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
+        var editor = sharedPreference?.edit()
+        editor?.putString("DEVICE_MAC",currentDevice?.address)
+        editor?.commit()
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(deviceStatesReceiver)
+        super.onDestroy()
+    }
+
 
     @FlowPreview
     @ExperimentalCoroutinesApi

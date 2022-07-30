@@ -430,13 +430,10 @@ class MooltipassDevice(private val device: BluetoothDevice, private var debug: I
 @ExperimentalCoroutinesApi
 class MooltipassScan {
 
-    private var context:Context? = null
-
     private fun pairedDevice(context: Context): BluetoothDevice? {
-        scheduleBlutoothStateObserver(context);
-
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bondedDevices.filter(::filter).firstOrNull()
+        return bluetoothManager.adapter.bondedDevices
+                .firstOrNull { it -> isConnected(it, context) }
     }
 
     fun deviceFlow(context: Context): Flow<BluetoothDevice> {
@@ -446,50 +443,16 @@ class MooltipassScan {
 //            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
     }
 
-    private fun scheduleBlutoothStateObserver(context: Context)
-    {
-        this.context = context
-        val filter = IntentFilter()
-        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
-        context.registerReceiver(broadcastReceiver, filter)
-    }
+    private fun isConnected(device: BluetoothDevice,context: Context): Boolean {
 
-    private val broadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent) {
-
-            if (BluetoothDevice.ACTION_ACL_CONNECTED == intent.action) {
-                val currentDevice:BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                if(currentDevice?.address!!.startsWith(MAC_ADDRESS_BASE_VALUE,true))
-                {
-                    saveDevice(context,currentDevice)
-                }
-            }
-        }
-    }
-
-    private fun saveDevice(context: Context?, currentDevice:BluetoothDevice?)
-    {
-        val sharedPreference =  context?.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
-        var editor = sharedPreference?.edit()
-        editor?.putString("DEVICE_NAME",currentDevice?.name)
-        editor?.putString("DEVICE_MAC",currentDevice?.address)
-        editor?.commit()
-    }
-
-    private fun lastConnectedDeviceMac() : String?
-    {
-        val sharedPreference =  this.context?.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
-        return sharedPreference?.getString("DEVICE_MAC",null)
-    }
-
-    private fun filter(device: BluetoothDevice) = device.address.startsWith(MAC_ADDRESS_BASE_VALUE, true) && isConnected(device)
-
-    private fun isConnected(device: BluetoothDevice): Boolean {
-
-        val address =  lastConnectedDeviceMac()
-        if(address != null)
+        if(device.address.startsWith(MAC_ADDRESS_BASE_VALUE, true))
         {
-            return device.address.equals(address, true)
+            val sharedPreference =  context.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
+            val address =  sharedPreference?.getString("DEVICE_MAC",null)
+            if(address != null)
+            {
+                return device.address.equals(address, true)
+            }
         }
 
         return false
