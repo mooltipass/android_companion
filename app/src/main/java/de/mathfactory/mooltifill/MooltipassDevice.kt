@@ -20,10 +20,7 @@
 package de.mathfactory.mooltifill
 
 import android.bluetooth.*
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
@@ -432,8 +429,14 @@ class MooltipassScan {
 
     private fun pairedDevice(context: Context): BluetoothDevice? {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        return bluetoothManager.adapter.bondedDevices
-                .firstOrNull { it -> isConnected(it, context) }
+        val address = lastConnectedDeviceAddress(context)
+        if(address != null)
+        {
+            return bluetoothManager.adapter.bondedDevices
+                .firstOrNull { it -> isConnected(it, address) }
+        }
+
+        return bluetoothManager.adapter.bondedDevices.lastOrNull{ it -> filter(it, context) }
     }
 
     fun deviceFlow(context: Context): Flow<BluetoothDevice> {
@@ -443,17 +446,31 @@ class MooltipassScan {
 //            ?:scanFlow(context).map(ScanResult::getDevice) // ... else scan devices
     }
 
-    private fun isConnected(device: BluetoothDevice,context: Context): Boolean {
+    private fun lastConnectedDeviceAddress(context: Context): String? {
+        val sharedPreference =  context.getSharedPreferences(context.getText(R.string.last_device).toString(),Context.MODE_PRIVATE)
+        return sharedPreference?.getString(context.getText(R.string.device_mac).toString(),null)
+    }
 
+    private fun filter(device: BluetoothDevice,context: Context): Boolean {
+
+        val matched =  device.address.startsWith(MAC_ADDRESS_BASE_VALUE,true)
+
+        if(matched)
+        {
+            val sharedPreference =  context.getSharedPreferences(context.getText(R.string.last_device).toString(),Context.MODE_PRIVATE)
+            var editor = sharedPreference?.edit()
+            editor?.putString(context.getText(R.string.device_mac).toString(),device?.address)
+            editor?.commit()
+        }
+
+        return matched
+    }
+
+    private fun isConnected(device: BluetoothDevice,mac: String): Boolean {
         if(device.address.startsWith(MAC_ADDRESS_BASE_VALUE, true))
         {
-            val sharedPreference =  context.getSharedPreferences("MOOLTIPASS_LAST_DEVICE",Context.MODE_PRIVATE)
-            val address =  sharedPreference?.getString("DEVICE_MAC",null)
-            if(address != null)
-            {
-                return device.address.equals(address, true)
-            }
-        }
+             return device.address.equals(mac, true)
+         }
 
         return false
     }
