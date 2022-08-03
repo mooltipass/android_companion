@@ -1,19 +1,26 @@
 <PreferenceScreen
         xmlns:app="http://schemas.android.com/apk/res-auto">
-
     <PreferenceCategory
-        app:title="@string/device_settings_header">
+            app:title="Device Settings">
         <Preference
-            app:key="test_ping"
-            app:title="Test Mooltipass Device Connection"
-            app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
+                app:key="open_bt_settings"
+                app:title="Configure bonded device"
+                app:summary="Click here to go to the android settings to pair a device. Paired devices will then be shown in the list below. If you have multiple devices, you can select which should be used, otherwise the device that connects first is used." />
     </PreferenceCategory>
 
     <PreferenceCategory
             app:title="Device List"
             app:key="device_list">
         <Preference
-            app:title="Press &quot;Rescan bonded devices&quot; to start scan" />
+                app:title="Retrieving bonded devices list..." />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+            app:title="Functionality Test">
+        <Preference
+                app:key="test_ping"
+                app:title="Test Mooltipass Device Connection"
+                app:summary="Please enable Bluetooth and be sure to have the ble device paired before testing the connection." />
     </PreferenceCategory>
 
 </PreferenceScreen>

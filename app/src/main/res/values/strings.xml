@@ -5,7 +5,6 @@
 
     <!-- Preference Titles -->
     <string name="settings_header">Main Settings</string>
-    <string name="device_settings_header">Device Settings</string>
 
     <string name="awareness_title">Mooltipass Device Status</string>
     <string name="default_awareness_message">Disconnected</string>

@@ -18,7 +18,7 @@
         <Preference
             app:key="device_settings"
             app:title="Device Settings"
-            app:summary="Open the device settings" />
+            app:summary="Configure mooltipass devices" />
         <ListPreference
             app:key="debug_level"
             app:title="Debug Output to logcat"
