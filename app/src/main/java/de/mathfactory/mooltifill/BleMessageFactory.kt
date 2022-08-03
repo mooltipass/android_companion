@@ -45,7 +45,7 @@ class BleMessageFactory(private val log: Boolean = true) : MessageFactory {
         }
         val len = getShort(data[0], HID_HEADER_SIZE + PACKET_LEN_OFFSET)
         val cmdInt = getShort(data[0], HID_HEADER_SIZE + PACKET_CMD_OFFSET)
-        val hidPayload = data.fold(ByteArray(0)) {a, chunk -> a + chunk.sliceArray(2 until 64)}
+        val hidPayload = data.fold(ByteArray(0)) {a, chunk -> a + chunk.sliceArray(2 until min(64, chunk.size))}
         if(len > hidPayload.size - PACKET_DATA_OFFSET) {
             if(log) Log.e("Mooltifill", "Not enough data for reported length: $len > ${hidPayload.size - PACKET_DATA_OFFSET}")
             return null
