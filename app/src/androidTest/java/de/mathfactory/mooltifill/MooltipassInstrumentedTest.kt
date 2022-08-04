@@ -100,7 +100,7 @@ class MooltifillInstrumentedTest(private val useAwarenessService: Boolean) {
             assertNotNull(device)
             device!!
         } else {
-            val device = MooltipassScan().deviceFlow(appContext).firstOrNull()
+            val device = MooltipassScan.devices(appContext).firstOrNull()
             assertNotNull("Expected to find ble device", device)
             assert(device?.bondState == BluetoothDevice.BOND_BONDED) {"Device not bonded"}
             MooltipassDevice(device!!, 2).also { it.connect(CoroutineScope(Dispatchers.IO), appContext) }

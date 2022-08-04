@@ -13,9 +13,11 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import de.mathfactory.mooltifill.AwarenessService.Companion.notify
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 
-class AwarenessCallback(private val context: Context) : BluetoothGattCallback() {
+class AwarenessCallback(private val context: Context, private val device: MooltipassDevice, private val connectedCallback: (MooltipassDevice) -> Boolean) : BluetoothGattCallback() {
     private var mLocked: Boolean? = null
     private var mConnectState: Int = BluetoothProfile.STATE_DISCONNECTED
 
@@ -31,24 +33,31 @@ class AwarenessCallback(private val context: Context) : BluetoothGattCallback() 
             false -> " (unlocked)"
             null -> ""
         }
-
-        CoroutineScope(Dispatchers.Main).notify(context, msg)
+        if(AwarenessService.isCurrent(device)) {
+            // only send notifications for the active device
+            CoroutineScope(Dispatchers.Main).notify(context, msg)
+        }
     }
 
     override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
         mConnectState = newState
         if(newState != BluetoothProfile.STATE_CONNECTED) mLocked = null
         else {
+            if(!connectedCallback(device)) {
+                // do not continue
+                CoroutineScope(Dispatchers.IO).launch { device.close() }
+                return
+            }
+
             // send query for lock status
             CoroutineScope(Dispatchers.IO).launch {
-                val device = AwarenessService.mooltipassDevice(context)
                 if(SettingsActivity.isDebugEnabled(context)) Log.d("Mooltifill", "reading lock status")
                 // query will be parsed in AwarenessCallback::onCharacteristicChanged()
-                device?.communicate(BleMessageFactory(), MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE))
+                device.communicate(BleMessageFactory(), MooltipassMessage(MooltipassCommand.MOOLTIPASS_STATUS_BLE))
             }
         }
         if(newState == BluetoothProfile.STATE_DISCONNECTED) {
-            AwarenessService.close()
+            CoroutineScope(Dispatchers.IO).launch { device.close() }
         }
         sendNotification()
     }
@@ -83,8 +92,12 @@ class AwarenessService : Service() {
         private const val CHANNEL_NAME = "Mooltifill"
         private const val EXTRA_MESSAGE = "message"
 
-        private var device: MooltipassDevice? = null
-        internal var serviceStarted = CompletableDeferred<Unit>()
+        private var device = CompletableDeferred<MooltipassDevice>()
+        private val deviceMutex = Mutex()
+        internal val serviceStarted = CompletableDeferred<Unit>()
+
+        fun deviceList(context: Context, debug: Int = SettingsActivity.debugLevel(context)) =
+            MooltipassScan.bondedDevices(context, debug)
 
         fun onFillRequest(context: Context) {
             ensureService(context)
@@ -107,11 +120,31 @@ class AwarenessService : Service() {
             }
         }
 
-        suspend fun mooltipassDevice(context: Context, debug: Int = SettingsActivity.debugLevel(context)): MooltipassDevice? {
-            if(device == null || device?.isDisconnected() != false) {
-                device = MooltipassDevice.connect(context, debug, AwarenessCallback(context))
+        suspend fun mooltipassDevice(context: Context, debug: Int = SettingsActivity.debugLevel(context)): MooltipassDevice? = withTimeoutOrNull(MooltipassDevice.CONNECT_TIMEOUT) {
+            deviceMutex.withLock {
+                try {
+                    if (!device.isActive && device.getCompleted().isDisconnected()) {
+                        // device has gone disconnected, initiate reconnect
+                        device = CompletableDeferred()
+                    }
+                } catch (e: IllegalStateException) {Log.w("Mooltifill", "IllegalStateException: $e")}
+                if (device.isActive) {
+                    // complete deferred by connecting the device
+                    deviceList(context, debug).let{
+                        // if device has been chosen in settings, filter accordingly, otherwise connect all
+                        it.filter { dev ->
+                            SettingsActivity.isChosenDeviceAddress(context, dev.address(), true)
+                        }.ifEmpty { it } // if filter did not return any device, connect all (-> chosen device has been unpaired)
+                    }.forEach {
+                        it.connect(CoroutineScope(Dispatchers.IO), context, AwarenessCallback(context, it) { _ ->
+                            // the first device that connects will be taken
+                            device.complete(it)
+                        })
+                    }
+                }
+                // wait until we got a connected device
+                device.await()
             }
-            return device
         }
 
         internal fun createNotification(context: Context, text: CharSequence?): Notification {
@@ -140,18 +173,23 @@ class AwarenessService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        fun setDebug(debug: Int) {
-            device?.setDebug(debug)
+        fun setDebug(debug: Int) = try {
+            device.getCompleted().setDebug(debug)
+        } catch (_: IllegalStateException) { /* no device yet */ }
+
+        fun closeCurrent() = CoroutineScope(Dispatchers.IO).launch {
+            deviceMutex.withLock {
+                try {
+                    val d = device.getCompleted()
+                    d.close()
+                    device = CompletableDeferred()
+                } catch (_: IllegalStateException) { /* no device yet */ }
+            }
         }
 
-        fun close() {
-            device?.let {
-                CoroutineScope(Dispatchers.IO).launch {
-                    it.close()
-                }
-            }
-            device = null
-        }
+        fun isCurrent(d: MooltipassDevice) = try {
+            device.getCompleted() == d
+        } catch (_: IllegalStateException) { false }
     }
 
     override fun onBind(intent: Intent): IBinder? = null
@@ -162,10 +200,13 @@ class AwarenessService : Service() {
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     when(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)) {
                         BluetoothAdapter.STATE_OFF -> {
-                            close()
+                            closeCurrent()
                             "Bluetooth Off"
                         }
-                        BluetoothAdapter.STATE_ON -> "Disconnected"
+                        BluetoothAdapter.STATE_ON -> {
+                            ensureService(context)
+                            "Disconnected"
+                        }
                         else -> null
                     }
                 }

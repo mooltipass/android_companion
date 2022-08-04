@@ -21,8 +21,11 @@ package de.mathfactory.mooltifill
 
 import android.Manifest
 import android.app.Activity
+import android.bluetooth.BluetoothAdapter
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,9 +37,11 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import androidx.preference.*
 import kotlinx.coroutines.*
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
+
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
     Nochange, PreferWww, PreferNowww, AddWww, RemoveWww, PublicSuffix, PublicSuffixWithSubDomain;
@@ -113,6 +118,9 @@ class SettingsActivity : AppCompatActivity() {
         fun isDebugEnabled(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 0
         fun isDebugVerbose(context: Context): Boolean = parsedIntSetting(context, "debug_level", 0) > 1
         fun isAwarenessEnabled(context: Context): Boolean = booleanSetting(context, "awareness", true)
+        private fun getChosenDeviceAddress(context: Context) = stringSetting(context, "chosen_device", null)
+        fun isChosenDeviceAddress(context: Context, mac: String?, default: Boolean) = getChosenDeviceAddress(context)?.let { it == mac } ?: default
+        fun setChosenDeviceAddress(context: Context, mac: String?) = if(mac == null) removeKey(context, "chosen_device") else putString(context, "chosen_device", mac)
 
         fun getSubstitutionPolicy(context: Context, isWebRq: Boolean): SubstitutionPolicy =
             if(isWebRq) { getUrlSubstitutionPolicy(context) } else { getPackageSubstitutionPolicy(context) }
@@ -127,6 +135,12 @@ class SettingsActivity : AppCompatActivity() {
 
         private fun <T> castChecked(block: () -> T): T? =
             try { block() } catch(e: ClassCastException) { null }
+
+        private fun putString(context: Context, key: String, value: String) =
+            PreferenceManager.getDefaultSharedPreferences(context).edit { putString(key, value) }
+
+        private fun removeKey(context: Context, key: String) =
+            PreferenceManager.getDefaultSharedPreferences(context).edit{ remove(key) }
 
         private fun booleanSetting(context: Context, key: String, default: Boolean) =
             castChecked { PreferenceManager.getDefaultSharedPreferences(context).getBoolean(key, default) } ?: default
@@ -165,40 +179,100 @@ class SettingsActivity : AppCompatActivity() {
             }
             permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
-//        if (ContextCompat.checkSelfPermission(
-//                this,
-//                Manifest.permission.ACCESS_COARSE_LOCATION
-//            ) != PackageManager.PERMISSION_GRANTED
-//        ) {
-//            if (ActivityCompat.shouldShowRequestPermissionRationale(
-//                    this,
-//                    Manifest.permission.ACCESS_COARSE_LOCATION
-//                )
-//            ) {
-//                val builder = AlertDialog.Builder(this)
-//                builder.setTitle("This app needs location access")
-//                builder.setMessage("Please grant location access so this app can detect beacons in the background.")
-//                builder.setPositiveButton(android.R.string.ok, null)
-//                builder.setOnDismissListener {
-//                    requestPermissions(
-//                        arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
-//                        1
-//                    )
-//                }
-//                builder.show()
-//            } else {
-//                // No explanation needed, we can request the permission.
-//                requestPermissions(
-//                    arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
-//                    1
-//                )
-//
-//                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-//                // app-defined int constant. The callback method gets the
-//                // result of the request.
-//            }
-//
-//        }
+    }
+
+    class DeviceFragment : PreferenceFragmentCompat() {
+
+        private val baReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                        rescan()
+                    }
+                    else -> {}
+                }
+            }
+        }
+
+        override fun onResume() {
+            super.onResume()
+            val filter = IntentFilter()
+            filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            requireActivity().registerReceiver(baReceiver, filter)
+
+            rescan()
+        }
+
+        override fun onPause() {
+            super.onPause()
+            requireActivity().unregisterReceiver(baReceiver)
+        }
+
+        private fun rescan() = CoroutineScope(Dispatchers.Main).launch {
+            findPreference<PreferenceCategory>("device_list")?.let { cat ->
+                cat.removeAll()
+                cat.addPreference(Preference(requireContext()).apply {
+                    title = "Performing scan..."
+                })
+                val devices = AwarenessService.deviceList(requireContext())
+                // get context after suspend. If we went out of view, return
+                val ctx = context ?: return@let
+                cat.removeAll()
+                if (devices.isEmpty()) {
+                    cat.addPreference(Preference(ctx).apply {
+                        title =
+                            "No device found. Please ensure bluetooth is enabled and the device is bonded in the Android system settings"
+                    })
+                } else {
+                    devices.forEach { device ->
+                        cat.addPreference(Preference(ctx).also {
+                            val chosen = isChosenDeviceAddress(ctx, device.address(), false)
+                            if(chosen) {
+                                it.setSummary(R.string.device_is_chosen)
+                            }
+                            it.title = device.description()
+                            it.setOnPreferenceClickListener { p ->
+                                Toast.makeText(
+                                    context,
+                                    "Using device " + device.description(),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                // save preference
+                                setChosenDeviceAddress(ctx, device.address())
+                                for(pd in cat) {
+                                    pd.summary = null
+                                }
+                                p.setSummary(R.string.device_is_chosen)
+                                // switch device: closing the current device, so the next connection
+                                // will be made to the device with the chosen address
+                                AwarenessService.closeCurrent()
+                                true
+                            }
+                        })
+                    }
+                }
+            }
+        }
+
+        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+            setPreferencesFromResource(R.xml.device_preferences, rootKey)
+
+            findPreference<Preference>("open_bt_settings")?.setOnPreferenceClickListener {
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                true
+            }
+
+            findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {
+                CoroutineScope(Dispatchers.Main).launch {
+                    it.summary = "Waiting for device access..."
+                    val ping = withContext(Dispatchers.IO) {
+                        MooltifillActivity.ping(requireContext())
+                    }
+                    it.summary = ping.getOrNull() ?: ping.exceptionOrNull()?.message
+                }
+                true
+            }
+        }
     }
 
     @FlowPreview
@@ -224,10 +298,6 @@ class SettingsActivity : AppCompatActivity() {
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
-//            findPreference<Preference>("enable_mooltifill")?.setOnPreferenceClickListener {
-//                enableService(requireContext().applicationContext)
-//                true
-//            }
             findPreference<SwitchPreference>("enable_mooltifill")?.setOnPreferenceChangeListener { _, newValue ->
                 val activity = requireActivity()
                 if (newValue == true) {
@@ -249,14 +319,12 @@ class SettingsActivity : AppCompatActivity() {
                 else AwarenessService.ensureService(requireContext(), null, true)
                 true
             }
-            findPreference<Preference>("test_ping")?.setOnPreferenceClickListener {
-                CoroutineScope(Dispatchers.Main).launch {
-                    it.summary = "Waiting for device access..."
-                    val ping = withContext(Dispatchers.IO) {
-                        MooltifillActivity.ping(requireContext())
-                    }
-                    it.summary = ping.getOrNull() ?: ping.exceptionOrNull()?.message
-                }
+            findPreference<Preference>("device_settings")?.setOnPreferenceClickListener {
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.settings, DeviceFragment())
+                    .setReorderingAllowed(true)
+                    .addToBackStack(null)
+                    .commit()
                 true
             }
         }
