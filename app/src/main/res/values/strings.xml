@@ -9,5 +9,6 @@
     <string name="awareness_title">Mooltipass Device Status</string>
     <string name="default_awareness_message">Disconnected</string>
     <string name="device_is_chosen">This device will be used</string>
+    <string name="enable_notification_permission_message">You need to enable notification permission to get device connection status</string>
 
 </resources>
