@@ -26,6 +26,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -37,10 +38,13 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.edit
 import androidx.preference.*
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.*
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
+import java.lang.Exception
 
 
 enum class UrlSubstitutionPolicies : SubstitutionPolicy {
@@ -179,6 +183,24 @@ class SettingsActivity : AppCompatActivity() {
             }
             permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) {
+
+            val postNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+                if (it) {
+                    AwarenessService.ensureService(this)
+                }
+            }
+
+            if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                Snackbar.make(window.decorView.rootView,
+                    getString(R.string.enable_notification_permission_message), Snackbar.LENGTH_SHORT).show()
+            } else {
+                postNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     class DeviceFragment : PreferenceFragmentCompat() {
@@ -278,6 +300,7 @@ class SettingsActivity : AppCompatActivity() {
     @FlowPreview
     @ExperimentalCoroutinesApi
     class SettingsFragment : PreferenceFragmentCompat() {
+        private val TAG = SettingsFragment.javaClass.name
         companion object {
             private const val PING_TIMEOUT = 20000L
         }
@@ -330,8 +353,13 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         private fun hasEnabledMooltifill(context: Activity): Boolean {
-            val autofillManager = context.getSystemService(AutofillManager::class.java)
-            return autofillManager != null && autofillManager.hasEnabledAutofillServices()
+            try {
+                val autofillManager = context.getSystemService(AutofillManager::class.java)
+                return autofillManager != null && autofillManager.hasEnabledAutofillServices()
+            } catch (exception: Exception) {
+                Log.e(TAG, "hasEnabledMooltifill exception: " + exception.message)
+            }
+            return false
         }
 
         private fun disableMooltifill(context: Activity) {
