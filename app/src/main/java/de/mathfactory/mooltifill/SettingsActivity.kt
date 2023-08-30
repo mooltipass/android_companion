@@ -26,7 +26,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -38,10 +37,10 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.edit
 import androidx.preference.*
 import com.google.android.material.snackbar.Snackbar
+import de.mathfactory.mooltifill.utils.PermissionUtils
 import kotlinx.coroutines.*
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import java.lang.Exception
@@ -175,22 +174,27 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun permissionSetup(context: Context) {
+        val permissions = mutableListOf<String>()
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-                if(isDebugEnabled(context)) {
-                    Log.d("Mooltifill", "permission result: $it")
-                }
-            }
-            permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-            && ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED) {
+        if (!PermissionUtils.hasPostNotificationPermission(context)) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
-            val postNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-                if (it) {
-                    AwarenessService.ensureService(this)
+        if (permissions.size > 0) {
+            val permissionsRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+                permissions.entries.forEach {
+                    if(isDebugEnabled(context)) {
+                        Log.d("Mooltifill", "permission result: " + it.key + " - " + it.value)
+                    }
+
+                    val permissionName = it.key
+                    val isGranted = it.value
+                    if (permissionName == Manifest.permission.POST_NOTIFICATIONS && isGranted) {
+                        AwarenessService.ensureService(this)
+                    }
                 }
             }
 
@@ -198,7 +202,7 @@ class SettingsActivity : AppCompatActivity() {
                 Snackbar.make(window.decorView.rootView,
                     getString(R.string.enable_notification_permission_message), Snackbar.LENGTH_SHORT).show()
             } else {
-                postNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                permissionsRequest.launch(permissions.toTypedArray())
             }
         }
     }
@@ -231,6 +235,19 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         private fun rescan() = CoroutineScope(Dispatchers.Main).launch {
+            val activity = activity ?: return@launch
+
+            if (!PermissionUtils.hasBluetoothPermission(activity)) {
+                if (!shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {
+                    Snackbar.make(activity.window.decorView.rootView,
+                        getString(R.string.enable_bluetooth_permission_message), Snackbar.LENGTH_SHORT).show()
+                }
+            } else {
+                listBluetoothDevices()
+            }
+        }
+
+        private fun listBluetoothDevices() {
             findPreference<PreferenceCategory>("device_list")?.let { cat ->
                 cat.removeAll()
                 cat.addPreference(Preference(requireContext()).apply {
@@ -238,7 +255,7 @@ class SettingsActivity : AppCompatActivity() {
                 })
                 val devices = AwarenessService.deviceList(requireContext())
                 // get context after suspend. If we went out of view, return
-                val ctx = context ?: return@let
+                val ctx = context ?: return
                 cat.removeAll()
                 if (devices.isEmpty()) {
                     cat.addPreference(Preference(ctx).apply {
