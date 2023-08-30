@@ -10,5 +10,6 @@
     <string name="default_awareness_message">Disconnected</string>
     <string name="device_is_chosen">This device will be used</string>
     <string name="enable_notification_permission_message">You need to enable notification permission to get device connection status</string>
+    <string name="enable_bluetooth_permission_message">Enable BLUETOOTH permission first !</string>
 
 </resources>

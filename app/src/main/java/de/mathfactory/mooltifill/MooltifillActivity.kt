@@ -19,7 +19,6 @@
 
 package de.mathfactory.mooltifill
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -30,6 +29,10 @@ import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
+import de.mathfactory.mooltifill.credentials.CredentialsViewModel
+import de.mathfactory.mooltifill.utils.PermissionUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.firstOrNull
@@ -58,7 +61,9 @@ interface RequestCallback {
     suspend fun onLocked() {}
 }
 
-class MooltifillActivity : Activity() {
+class MooltifillActivity : AppCompatActivity() {
+    private var mGetCredentialJob: Job? = null
+    private lateinit var mCredentialsViewModel: CredentialsViewModel
 
     @ExperimentalCoroutinesApi
     @FlowPreview
@@ -81,6 +86,9 @@ class MooltifillActivity : Activity() {
             if(SettingsActivity.isDebugVerbose(context)) Log.d("Mooltifill", "getCredentials(): $query")
             if(query.isBlank()) return CredentialResult.InvalidQuery
             val f = BleMessageFactory()
+
+            if (!PermissionUtils.hasBluetoothPermission(context)) return CredentialResult.DeviceNotFound
+
             val device = AwarenessService.mooltipassDevice(context) ?: return CredentialResult.DeviceNotFound // "Mooltipass device not accessible"
             val hasCommService = device.hasCommService()
             cb?.onConnected(hasCommService)
@@ -108,6 +116,9 @@ class MooltifillActivity : Activity() {
             if(SettingsActivity.isDebugVerbose(context)) Log.d("Mooltifill", "setCredentials: $service $login $pass")
             if(service.isBlank()) return false
             val f = BleMessageFactory()
+
+            if (!PermissionUtils.hasBluetoothPermission(context)) return false
+
             val device = AwarenessService.mooltipassDevice(context) ?: return false // "Mooltipass device not accessible"
             val hasCommService = device.hasCommService()
             cb?.onConnected(hasCommService)
@@ -126,6 +137,7 @@ class MooltifillActivity : Activity() {
         }
 
         suspend fun ping(context: Context): Result<String> {
+            if (!PermissionUtils.hasBluetoothPermission(context)) return Result.failure(Exception("Device not found"))
             val f = BleMessageFactory()
             val device = AwarenessService.mooltipassDevice(context) ?: return Result.failure(Exception("Device not found"))
             if(!device.hasCommService()) return Result.failure(Exception("Device without communication service found, please update device"))
@@ -144,9 +156,15 @@ class MooltifillActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        mCredentialsViewModel = ViewModelProvider(this)[CredentialsViewModel::class.java]
         setContentView(R.layout.activity_mooltifill)
         this.setFinishOnTouchOutside(false)
-        findViewById<TextView>(R.id.btn_cancel)?.setOnClickListener { setResult(RESULT_CANCELED);finish() }
+        findViewById<TextView>(R.id.btn_cancel)?.setOnClickListener {
+            mGetCredentialJob?.cancel()
+            mCredentialsViewModel.cancelRequest()
+            setResult(RESULT_CANCELED)
+            finish()
+        }
         intent?.getStringExtra(EXTRA_QUERY)?.let { query ->
             val isWebRq = intent?.getBooleanExtra(EXTRA_IS_WEB_REQUEST, false) ?: false
             val save = intent?.getBooleanExtra(EXTRA_SAVE, false) ?: false
@@ -154,7 +172,7 @@ class MooltifillActivity : Activity() {
                 // save is handled by MooltifillService
             } else /* query */ {
                 findViewById<TextView>(R.id.txt_query)?.text = query
-                CoroutineScope(Dispatchers.IO).launch {
+                mGetCredentialJob = CoroutineScope(Dispatchers.IO).launch {
                     val substitution = SettingsActivity.getSubstitutionPolicy(this@MooltifillActivity, isWebRq)
                     val reply = getCredentialsWithSubstitution(applicationContext, query, substitution, object :RequestCallback {
                         override suspend fun onQueryChanged(original: String, substituted: String) = withContext(Dispatchers.Main) {

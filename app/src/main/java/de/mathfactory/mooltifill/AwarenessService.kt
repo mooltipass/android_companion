@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import de.mathfactory.mooltifill.AwarenessService.Companion.notify
+import de.mathfactory.mooltifill.utils.PermissionUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -114,6 +115,7 @@ class AwarenessService : Service() {
             if(msg != null) intent.putExtra(EXTRA_MESSAGE, msg)
             // start service
             context.startForegroundService(intent)
+            if (!PermissionUtils.hasBluetoothPermission(context)) return
             // try to connect to ble device
             CoroutineScope(Dispatchers.IO).launch {
                 mooltipassDevice(context)
@@ -183,7 +185,10 @@ class AwarenessService : Service() {
                     val d = device.getCompleted()
                     d.close()
                     device = CompletableDeferred()
-                } catch (_: IllegalStateException) { /* no device yet */ }
+                } catch (exception: IllegalStateException) {
+                    /* no device yet */
+                    exception.printStackTrace()
+                }
             }
         }
 
