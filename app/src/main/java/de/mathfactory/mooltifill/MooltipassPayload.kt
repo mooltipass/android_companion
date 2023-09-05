@@ -19,11 +19,15 @@
 
 package de.mathfactory.mooltifill
 
+import java.util.Calendar
+import java.util.TimeZone
+
 data class Credentials(val service: String, val login: String?, val description: String?, val third: String?, val password: String?)
 
 class MooltipassPayload {
     companion object {
         val FLIP_BIT_RESET_PACKET = byteArrayOf(0xFF.toByte(), 0xFF.toByte())
+        private const val SIZE_DATE_DATA_FIELD = 12
 
         private fun tr(s: String): ByteArray = s.toByteArray(Charsets.UTF_16LE)
         private fun trr(b: ByteArray): String = b.toString(Charsets.UTF_16LE)
@@ -103,5 +107,21 @@ class MooltipassPayload {
             }
             return null
         }
+
+        fun getDate(): ByteArray {
+            val now = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+
+            //Ref: //https://github.com/mooltipass/minible/wiki/Mooltipass-Protocol#0x0004-set-current-date
+            val bytes = ByteArray(SIZE_DATE_DATA_FIELD)
+            BleMessageFactory.setShort(bytes, 0, now.get(Calendar.YEAR))
+            BleMessageFactory.setShort(bytes, 2, (now.get(Calendar.MONTH) + 1))
+            BleMessageFactory.setShort(bytes, 4, now.get(Calendar.DAY_OF_MONTH))
+            BleMessageFactory.setShort(bytes, 6, now.get(Calendar.HOUR_OF_DAY))
+            BleMessageFactory.setShort(bytes, 8, now.get(Calendar.MINUTE))
+            BleMessageFactory.setShort(bytes, 10, now.get(Calendar.SECOND))
+
+            return bytes
+        }
+
     }
 }

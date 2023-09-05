@@ -11,11 +11,16 @@ import android.content.IntentFilter
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkManager
 import de.mathfactory.mooltifill.AwarenessService.Companion.notify
+import de.mathfactory.mooltifill.time.SendTimeWorker
 import de.mathfactory.mooltifill.utils.PermissionUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.TimeUnit
 
 
 class AwarenessCallback(private val context: Context, private val device: MooltipassDevice, private val connectedCallback: (MooltipassDevice) -> Boolean) : BluetoothGattCallback() {
@@ -92,6 +97,9 @@ class AwarenessService : Service() {
         private const val CHANNEL_ID = "channel_mooltifill"
         private const val CHANNEL_NAME = "Mooltifill"
         private const val EXTRA_MESSAGE = "message"
+
+        //Same in iOS: https://github.com/mooltipass/moolticute/blob/master/src/MPDevice.h
+        private const val SET_DATE_INTERVAL_SECONDS = 4096L
 
         private var device = CompletableDeferred<MooltipassDevice>()
         private val deviceMutex = Mutex()
@@ -245,7 +253,20 @@ class AwarenessService : Service() {
 
         startForeground(ONGOING_NOTIFICATION_ID, notification)
         serviceStarted.complete(Unit)
+        scheduleSendTime()
         return START_STICKY
+    }
+
+    private fun scheduleSendTime() {
+        try {
+            val sendTimeWork = PeriodicWorkRequest.Builder(SendTimeWorker::class.java,
+                SET_DATE_INTERVAL_SECONDS, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork("send-time",
+                ExistingPeriodicWorkPolicy.UPDATE, sendTimeWork)
+        } catch (e: IllegalStateException) {
+            Log.e(SendTimeWorker::class.java.name, "doWork exception: " + e.message)
+        }
     }
 
 }
