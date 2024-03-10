@@ -22,6 +22,7 @@ package de.mathfactory.mooltifill
 import android.bluetooth.*
 import android.content.Context
 import android.util.Log
+import de.mathfactory.mooltifill.utils.PermissionUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
@@ -429,8 +430,11 @@ class MooltipassScan {
             devices(context).map { MooltipassDevice(it, debug) }
 
         // Simply uses the Android BluetoothManager to return all bonded Mooltipass devices
-        fun devices(context: Context): List<BluetoothDevice> =
-            (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
+        fun devices(context: Context): List<BluetoothDevice> {
+            if (!PermissionUtils.hasBluetoothPermission(context)) return emptyList()
+
+            return (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager)
                 .adapter.bondedDevices.filter(::filter).reversed()
+        }
     }
 }
